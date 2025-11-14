@@ -17,7 +17,7 @@ module axi_crossbar #(
     output [ADDR_WIDTH-1:0] m_axi_DMA,
     output [ADDR_WIDTH-1:0] m_axi_PTW,
     // Subordinate-side AXI ports (DDR, AXI-Lite bridge, etc.)
-    // ...
+    // Amount and size of Subordinate-side AXi ports subject to change 
     input [ADDR_WIDTH-1:0] s_axi_DDR,
     input [ADDR_WIDTH-1:0] s_axi_LiteB
 );
@@ -28,4 +28,5 @@ module axi_crossbar #(
     // TODO: ready/valid handling
     
 endmodule
+
 
