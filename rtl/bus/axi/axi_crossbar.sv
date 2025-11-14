@@ -11,10 +11,15 @@ module axi_crossbar #(
     input logic rst_ni
     
     // Manager-side AXI ports (I$, D$, DMA, PTW, etc)
-    // ...
-    
+    // Amount of Manager-side AXI ports subject to change
+    output [ADDR_WIDTH-1:0] m_axi_I$,
+    output [ADDR_WIDTH-1:0] m_axi_D$,
+    output [ADDR_WIDTH-1:0] m_axi_DMA,
+    output [ADDR_WIDTH-1:0] m_axi_PTW,
     // Subordinate-side AXI ports (DDR, AXI-Lite bridge, etc.)
     // ...
+    input [ADDR_WIDTH-1:0] s_axi_DDR,
+    input [ADDR_WIDTH-1:0] s_axi_LiteB
 );
 
     // TODO: address decode
@@ -23,3 +28,4 @@ module axi_crossbar #(
     // TODO: ready/valid handling
     
 endmodule
+
