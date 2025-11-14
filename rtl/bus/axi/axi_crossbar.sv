@@ -1,3 +1,12 @@
+/*
+    axi_crossbar.sv
+
+    Purpose & Role
+    Central AXI4 interconnect between managers and subordinates.
+    Performs address decode, per-subordinate channel arbitration, and ID-based routing so multiple transactions can be outstanding concurrently.
+    Common widths/IDs are defined in rtl/bus/interconnect_pkg.sv
+*/
+
 module axi_crossbar #(
     // TODO: add parameters subject to change (managers/subordinates, widths)
     parameter int unsigned N_M = 4;
@@ -28,5 +37,6 @@ module axi_crossbar #(
     // TODO: ready/valid handling
     
 endmodule
+
 
 
