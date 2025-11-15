@@ -38,30 +38,58 @@ module icache #(
   localparam int INDEX = $clog2(SETS);  // 7 bits
   localparam int TAG = ADDR_WIDTH - OFFSET - INDEX;  // 19 bits
 
-  //main cache storage
+  // i-cache storage
   logic [TAG-1:0] icache_tags [SETS][WAYS];
   logic [LINE_SIZE*8-1:0] icache_data [SETS][WAYS];
   logic valid_bits [SETS][WAYS];
 
-  //address
+  // hold different address portions
   logic [TAG-1 : 0] addr_tag_virtual;
   logic [INDEX-1 : 0] addr_index;
   logic [OFFSET-1 : 0] addr_offset;
 
-  //cache state machine
-  typedef enum logic [2:0] {
-    IDLE,
-    LOOKUP,
-    MISS,
-    DATA
+  logic [$clog2(WAYS)-1 : 0] hit_way;
+  logic cache_tag_hit;
+
+  typedef enum logic [3:0] {
+    CACHE_IDLE,
+    CACHE_LOOKUP,
+    CACHE_HIT,
+    CACHE_MISS,
+    CACHE_FETCH,
+    CACHE_EVICT,
+    CACHE_OUTPUT
   } cache_state_t;
 
   cache_state_t current_state, next_state;
 
-  // main sequential loop
-  always_ff @(posedge clk_i) begin
+  // tag lookup
+  always_comb begin
+    cache_tag_hit = 1'b0;
+    hit_way = '0;
+    if(current_state == CACHE_LOOKUP) begin
+      for(int way = 0; way < WAYS; way++) begin
+        if(tlb_pa_tag_i == icache_tags[addr_index][way]
+          && valid_bits[addr_index][way]) begin
+            hit_way = way;
+            cache_tag_hit = 1'b1;
+            break;
+        end
+      end
+    end
+  end
+
+  // VIPT address stuff
+  always_comb begin
+    addr_index = cpu_addr_i[OFFSET+INDEX-1 : OFFSET];
+    addr_offset = cpu_addr_i[OFFSET-1 : 0];
+    addr_tag_virtual = cpu_addr_i[ADDR_WIDTH-1 : OFFSET+INDEX];
+  end
+
+  // clear valid bits on reset or FENCE.I
+  always_ff @(posedge clk_i or negedge rst_ni) begin
     if(!rst_ni) begin
-      current_state <= IDLE;
+      current_state <= CACHE_IDLE;
       for(int set = 0; set < SETS; set++) begin
         for(int way = 0; way < WAYS; way++) begin
           valid_bits[set][way] <= 1'b0;
@@ -69,7 +97,7 @@ module icache #(
       end
     end
     else if(icache_flush_i) begin
-      current_state <= IDLE;
+      current_state <= CACHE_IDLE;
       for(int set = 0; set < SETS; set++) begin
         for(int way = 0; way < WAYS; way++) begin
           valid_bits[set][way] <= 1'b0;
@@ -81,21 +109,22 @@ module icache #(
     end
   end
 
-  // VIPT address stuff
-  always_comb begin
-    addr_index = cpu_addr_i[OFFSET+INDEX-1 : OFFSET];
-    addr_offset = cpu_addr_i[OFFSET-1 : 0];
-    addr_tag_virtual = cpu_addr_i[ADDR_WIDTH-1 : OFFSET+INDEX];
-  end
-
   //combinational next state control
   always_comb begin
     case (current_state)
-      IDLE:
-      LOOKUP:
-      MISS:
-      DATA:
-      default: next_state = IDLE;
+      CACHE_IDLE:
+        if(cpu_req_valid_i && icache_req_ready_o) next_state = CACHE_LOOKUP;
+      CACHE_LOOKUP:
+        if(cache_tag_hit) next_state = CACHE_HIT;
+        else next_state = CACHE_MISS;
+      CACHE_HIT:
+        if(cpu_resp_ready_i && icache_resp_valid_o) next_state = CACHE_OUTPUT;
+      CACHE_MISS:
+        if(tlb_req_ready_i && icache_tlb_resp_ready_o) next_state = CACHE_FETCH;
+      CACHE_FETCH:
+      CACHE_EVICT:
+      CACHE_OUTPUT:
+      default: next_state = CACHE_IDLE;
     endcase
   end
 
