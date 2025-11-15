@@ -79,14 +79,22 @@ module icache #(
     end
   end
 
-  // VIPT address stuff
+  //output data logic
+  always_comb begin
+    icache_resp_instr_o = '0;
+    if(current_state == CACHE_OUTPUT) begin
+      icache_resp_instr_o = icache_data[addr_index][hit_way][addr_offset*8+ADDR_WIDTH-1 : addr_offset*8];
+    end
+  end
+
+  // address slicing into offset and index
   always_comb begin
     addr_index = cpu_addr_i[OFFSET+INDEX-1 : OFFSET];
     addr_offset = cpu_addr_i[OFFSET-1 : 0];
     addr_tag_virtual = cpu_addr_i[ADDR_WIDTH-1 : OFFSET+INDEX];
   end
 
-  // clear valid bits on reset or FENCE.I
+  // rst_ni invalidate all cache lines
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if(!rst_ni) begin
       current_state <= CACHE_IDLE;
@@ -96,7 +104,11 @@ module icache #(
         end
       end
     end
-    else if(icache_flush_i) begin
+  end
+
+  // FENCE.I invalidate cache
+  always_ff @(posedge clk_i) begin
+    if(icache_flush_i) begin
       current_state <= CACHE_IDLE;
       for(int set = 0; set < SETS; set++) begin
         for(int way = 0; way < WAYS; way++) begin
@@ -104,12 +116,9 @@ module icache #(
         end
       end
     end
-    else begin
-      current_state <= next_state;
-    end
   end
 
-  //combinational next state control
+  // combinational next state control
   always_comb begin
     case (current_state)
       CACHE_IDLE:
@@ -119,11 +128,14 @@ module icache #(
         else next_state = CACHE_MISS;
       CACHE_HIT:
         if(cpu_resp_ready_i && icache_resp_valid_o) next_state = CACHE_OUTPUT;
+        else next_state = CACHE_HIT;
       CACHE_MISS:
         if(tlb_req_ready_i && icache_tlb_resp_ready_o) next_state = CACHE_FETCH;
       CACHE_FETCH:
       CACHE_EVICT:
       CACHE_OUTPUT:
+        if(!cpu_resp_ready_i) next_state = CACHE_OUTPUT;
+        else next_state = CACHE_IDLE;
       default: next_state = CACHE_IDLE;
     endcase
   end
