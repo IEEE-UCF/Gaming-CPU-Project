@@ -48,8 +48,13 @@ module icache #(
   logic [INDEX-1 : 0] addr_index;
   logic [OFFSET-1 : 0] addr_offset;
 
+  // cache hit
   logic [$clog2(WAYS)-1 : 0] hit_way;
   logic cache_tag_hit;
+
+  // instruction output
+  logic [INSTR_WIDTH-1 : 0] icache_resp_instr_next;
+  logic icache_resp_valid_next;
 
   typedef enum logic [3:0] {
     CACHE_IDLE,
@@ -81,10 +86,17 @@ module icache #(
 
   //output data logic
   always_comb begin
-    icache_resp_instr_o = '0;
+    icache_resp_instr_next = '0;
+    icache_resp_valid_next = 1'b0;
     if(current_state == CACHE_OUTPUT) begin
-      icache_resp_instr_o = icache_data[addr_index][hit_way][addr_offset*8+ADDR_WIDTH-1 : addr_offset*8];
+      icache_resp_instr_next = icache_data[addr_index][hit_way][addr_offset*8+ADDR_WIDTH-1 : addr_offset*8];
+      icache_resp_valid_next = 1'b1;
     end
+  end
+
+  always_ff @(posedge clk_i) begin
+    icache_resp_instr_o <= icache_resp_instr_next;
+    icache_resp_valid_next <= icache_resp_valid_next;
   end
 
   // address slicing into offset and index
@@ -98,6 +110,8 @@ module icache #(
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if(!rst_ni) begin
       current_state <= CACHE_IDLE;
+      icache_resp_instr_o <= '0;
+      icache_resp_valid_o <= 1'b0;
       for(int set = 0; set < SETS; set++) begin
         for(int way = 0; way < WAYS; way++) begin
           valid_bits[set][way] <= 1'b0;
