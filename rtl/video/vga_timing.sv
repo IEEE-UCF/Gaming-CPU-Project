@@ -1,5 +1,3 @@
-`timescale 1ns / 1ps
-
 module VGA_timing(
     input clk,
     input reset,
@@ -55,3 +53,4 @@ end
 
                 
 endmodule
+
