@@ -1,4 +1,3 @@
-`timescale 1ns / 1ps
 parameter FIFO_DEPTH = 16;
 //UART interface
 module UARTmodule(
