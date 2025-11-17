@@ -1,4 +1,3 @@
-parameter FIFO_DEPTH = 16;
 //UART interface
 module UARTmodule #(
     parameter FIFO_DEPTH = 16
