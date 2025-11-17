@@ -3,9 +3,9 @@ module UARTmodule #(
     parameter FIFO_DEPTH = 16
 ) (
     //clock to generate Baud rate
-    input wire clk,
+    input wire clk_i,
     //reset signal to initialize/clear registers
-    input wire rst,
+    input wire rst_ni,
     //Axi-lite bus interface
     input  wire [31:0] CPU_to_UART, 
     output wire [31:0] UART_to_CPU,
