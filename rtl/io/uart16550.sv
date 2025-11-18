@@ -60,8 +60,51 @@ output wire irq_o
     reg [ADDR_WIDTH:0] count;
     wire fifo_full  = (count == FIFO_DEPTH);
     wire fifo_empty = (count == 0);
+    
 /****************************CONFIG REGS*******************************/
-// LCR, IER, FCR, MCR, MSR, LSR, etc.
+    always @(posedge clk or posedge rst) begin
+        if (rst) begin //reset registers to its reset values
+            THR <= 8'h00;
+            RBR <= 8'h00;
+            IER <= 8'h00;
+            ISR <= 8'h01;
+            FCR <= 8'h00; //the datasheet reset value is 0x00? 
+            LCR <= 8'h00;
+            LSR <= 8'h60;
+            MCR <= 8'h00;
+            MSR <= 8'h00;
+            SPR <= 8'h00;
+            DLL <= 8'h01;
+            DLM <= 8'h01;
+            PSD <= 8'h00;
+        end
+        else begin //to handle CPU writes 
+            if  (awvalid && wvalid && awready && wready) begin 
+                case (awaddr) //address of the register
+                    3'b000: begin 
+                        if (LCR[7]==1'b0)// check DLAB = 0 -> THR, DLAB = 1 -> DLL
+                            THR <= wdata; // write data to be transmitted
+                        else
+                            DLL <= wdata; // baudrate low byte
+                    end
+                    3'b001: begin
+                        if (LCR[7]==1'b0)
+                            IER <= wdata; // enable interrupt 
+                        else
+                            DLM <= wdata; // baudrate high byte
+                    end 
+                    3'b010: FCR <= wdata; //FIFO control
+                    3'b011: LCR <= wdata; //Line Control
+                    3'b100: MCR <= wdata; //Modern control
+                    3'b101: begin 
+                        if (LCR [7] ==1'b1) 
+                            PSD <= {4'b0000, wdata[3:0]}; //prescaler division
+                    end
+                    3'b111: SPR <= wdata; // Scratch Pad 
+                endcase
+            end
+        end
+    end
 
 /**************************BAUD RATE CALC******************************/
 // Generate baud tick from clk
@@ -85,3 +128,4 @@ output wire irq_o
 /***************************ERROR DETECTION***************************/
 // Parity, framing, overrun errors
 endmodule
+
