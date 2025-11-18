@@ -29,9 +29,8 @@ module icache #(
     input logic l2_valid_i,
     input logic [ADDR_WIDTH-1 : 0] l2_addr_i,
     input logic [LINE_SIZE*8-1:0] l2_data_i
-
-    // AXI Interface not needed on I$, we only communicate with CPU and L2 Cache
 );
+
   //localparams for constants
   localparam int SETS = IMEM_SIZE / (WAYS * LINE_SIZE);  // 128 sets
   localparam int OFFSET = $clog2(LINE_SIZE);  // 6 bits
@@ -39,9 +38,9 @@ module icache #(
   localparam int TAG = ADDR_WIDTH - OFFSET - INDEX;  // 19 bits
 
   // i-cache storage
-  logic [TAG-1:0] icache_tags [SETS][WAYS];
-  logic [LINE_SIZE*8-1:0] icache_data [SETS][WAYS];
-  logic valid_bits [SETS][WAYS];
+  logic [TAG-1:0] icache_tags[SETS][WAYS];
+  logic [LINE_SIZE*8-1:0] icache_data[SETS][WAYS];
+  logic valid_bits[SETS][WAYS];
 
   // hold different address portions
   logic [TAG-1 : 0] addr_tag_virtual;
@@ -55,6 +54,11 @@ module icache #(
   // instruction output
   logic [INSTR_WIDTH-1 : 0] icache_resp_instr_next;
   logic icache_resp_valid_next;
+
+  // grab entire set preemptively
+  logic [LINE_SIZE*8-1:0] line_data[WAYS];
+
+  assign icache_req_ready_o = (current_state = CACHE_IDLE) ? 1'b1 : 1'b0;
 
   typedef enum logic [3:0] {
     CACHE_IDLE,
@@ -72,15 +76,21 @@ module icache #(
   always_comb begin
     cache_tag_hit = 1'b0;
     hit_way = '0;
-    if(current_state == CACHE_LOOKUP) begin
-      for(int way = 0; way < WAYS; way++) begin
-        if(tlb_pa_tag_i == icache_tags[addr_index][way]
-          && valid_bits[addr_index][way]) begin
-            hit_way = way;
-            cache_tag_hit = 1'b1;
-            break;
+    if (current_state == CACHE_LOOKUP) begin
+      for (int way = 0; way < WAYS; way++) begin
+        if (tlb_pa_tag_i == icache_tags[addr_index][way] && valid_bits[addr_index][way]) begin
+          hit_way = way;
+          cache_tag_hit = 1'b1;
+          break;
         end
       end
+    end
+  end
+
+  always_comb begin
+    line_data = '0;
+    if (current_state == CACHE_LOOKUP) begin
+      line_data = icache_data[addr_index];
     end
   end
 
@@ -88,8 +98,8 @@ module icache #(
   always_comb begin
     icache_resp_instr_next = '0;
     icache_resp_valid_next = 1'b0;
-    if(current_state == CACHE_OUTPUT) begin
-      icache_resp_instr_next = icache_data[addr_index][hit_way][addr_offset*8+ADDR_WIDTH-1 : addr_offset*8];
+    if (cache_tag_hit && current_state == CACHE_LOOKUP) begin
+      icache_resp_instr_next = line_data[hit_way][addr_offset*8+ADDR_WIDTH-1 : addr_offset*8];
       icache_resp_valid_next = 1'b1;
     end
   end
@@ -108,12 +118,12 @@ module icache #(
 
   // rst_ni invalidate all cache lines
   always_ff @(posedge clk_i or negedge rst_ni) begin
-    if(!rst_ni) begin
+    if (!rst_ni) begin
       current_state <= CACHE_IDLE;
       icache_resp_instr_o <= '0;
       icache_resp_valid_o <= 1'b0;
-      for(int set = 0; set < SETS; set++) begin
-        for(int way = 0; way < WAYS; way++) begin
+      for (int set = 0; set < SETS; set++) begin
+        for (int way = 0; way < WAYS; way++) begin
           valid_bits[set][way] <= 1'b0;
         end
       end
@@ -122,39 +132,48 @@ module icache #(
 
   // FENCE.I invalidate cache
   always_ff @(posedge clk_i) begin
-    if(icache_flush_i) begin
+    if (icache_flush_i) begin
       current_state <= CACHE_IDLE;
-      for(int set = 0; set < SETS; set++) begin
-        for(int way = 0; way < WAYS; way++) begin
+      for (int set = 0; set < SETS; set++) begin
+        for (int way = 0; way < WAYS; way++) begin
           valid_bits[set][way] <= 1'b0;
         end
       end
     end
   end
 
-  // combinational next state control
   always_comb begin
     case (current_state)
-      CACHE_IDLE:
-        if(cpu_req_valid_i && icache_req_ready_o) next_state = CACHE_LOOKUP;
-      CACHE_LOOKUP:
-        if(cache_tag_hit) next_state = CACHE_HIT;
+      CACHE_IDLE: begin
+        if (cpu_req_valid_i && icache_req_ready_o) next_state = CACHE_LOOKUP;
+      end
+      CACHE_LOOKUP: begin
+        if (cache_tag_hit) next_state = CACHE_HIT;
         else next_state = CACHE_MISS;
-      CACHE_HIT:
-        if(cpu_resp_ready_i && icache_resp_valid_o) next_state = CACHE_OUTPUT;
+      end
+      CACHE_HIT: begin
+        if (cpu_resp_ready_i && icache_resp_valid_o) next_state = CACHE_OUTPUT;
         else next_state = CACHE_HIT;
-      CACHE_MISS:
-        if(tlb_req_ready_i && icache_tlb_resp_ready_o) next_state = CACHE_FETCH;
-      CACHE_FETCH:
-      CACHE_EVICT:
-      CACHE_OUTPUT:
-        if(!cpu_resp_ready_i) next_state = CACHE_OUTPUT;
+      end
+      CACHE_MISS: begin
+        if (tlb_req_ready_i && icache_tlb_resp_ready_o) next_state = CACHE_FETCH;
+      end
+      CACHE_FETCH: begin
+      end
+      CACHE_EVICT: begin
+
+      end
+      CACHE_OUTPUT: begin
+        if (!cpu_resp_ready_i) next_state = CACHE_OUTPUT;
         else next_state = CACHE_IDLE;
-      default: next_state = CACHE_IDLE;
+      end
+      default: begin
+        next_state = CACHE_IDLE;
+      end
     endcase
   end
 
-/*
+  /*
 add next state combinational logic
 add replacement/evict logic
 add communiaction with L2 cache
