@@ -27,6 +27,7 @@ module icache #(
     // L2$ <-> I$ Interface
     input logic l2_ready_i,
     input logic l2_valid_i,
+    output logic icache_l2_req_o,
     input logic [ADDR_WIDTH-1 : 0] l2_addr_i,
     input logic [LINE_SIZE*8-1:0] l2_data_i
 );
@@ -58,6 +59,9 @@ module icache #(
   // grab entire set preemptively
   logic [LINE_SIZE*8-1:0] line_data[WAYS];
 
+  // placeholder this is terrible
+  logic evict_done;
+
   assign icache_req_ready_o = (current_state = CACHE_IDLE) ? 1'b1 : 1'b0;
 
   typedef enum logic [3:0] {
@@ -70,7 +74,8 @@ module icache #(
     CACHE_OUTPUT
   } cache_state_t;
 
-  cache_state_t current_state, next_state;
+  cache_state_t current_state = CACHE_IDLE;
+  cache_state_t next_state = CACHE_IDLE;
 
   // tag lookup
   always_comb begin
@@ -87,6 +92,7 @@ module icache #(
     end
   end
 
+  // grab entire line data at set
   always_comb begin
     line_data = '0;
     if (current_state == CACHE_LOOKUP) begin
@@ -104,6 +110,7 @@ module icache #(
     end
   end
 
+  // register intstruction into output
   always_ff @(posedge clk_i) begin
     icache_resp_instr_o <= icache_resp_instr_next;
     icache_resp_valid_next <= icache_resp_valid_next;
@@ -142,7 +149,18 @@ module icache #(
     end
   end
 
+  // register next state into current state
+  always_ff @(posedge clk_i) begin
+    if (!rst_ni) begin
+      current_state <= CACHE_IDLE;
+    end else begin
+      next_state <= current_state;
+    end
+  end
+
+  // combinational state transition logic
   always_comb begin
+    next_state = current_state;
     case (current_state)
       CACHE_IDLE: begin
         if (cpu_req_valid_i && icache_req_ready_o) next_state = CACHE_LOOKUP;
@@ -153,15 +171,15 @@ module icache #(
       end
       CACHE_HIT: begin
         if (cpu_resp_ready_i && icache_resp_valid_o) next_state = CACHE_OUTPUT;
-        else next_state = CACHE_HIT;
       end
       CACHE_MISS: begin
-        if (tlb_req_ready_i && icache_tlb_resp_ready_o) next_state = CACHE_FETCH;
+        if (l2_ready_i && icache_l2_req_o) next_state = CACHE_FETCH;
       end
       CACHE_FETCH: begin
+        if (l2_valid_i) next_state = CACHE_EVICT;
       end
       CACHE_EVICT: begin
-
+        if (evict_done) next_state = CACHE_LOOKUP;
       end
       CACHE_OUTPUT: begin
         if (!cpu_resp_ready_i) next_state = CACHE_OUTPUT;
@@ -172,12 +190,12 @@ module icache #(
       end
     endcase
   end
+endmodule
 
-  /*
-add next state combinational logic
-add replacement/evict logic
-add communiaction with L2 cache
-refine state machine
+/*
+  add next state combinational logic -- kinda finished
+  add replacement/evict logic -- working on it
+  add communiaction with L2 cache -- later
+  refine state machine -- might be good
 */
 
-endmodule
