@@ -64,8 +64,54 @@ output wire irq_o
 
 /***************************TRANSMIT tx_o******************************/
 // FIFO -> shift register -> serial output
-  
+    
+// logic [7:0] tx_shift_reg; Holds the byte to transmit
+// logic tx_fifo_rreq; Request to read/pop FIFO
+// logic tx_bit_clk; Baud rate clock (1x)  
 
+logic [7:0] tx_shift_reg;     
+    logic [3:0] tx_bit_counter; // Tracks data bits transmitted from 0 to 7
+	// TX State Machine Definition
+	typedef enum logic [2:0] {
+		IDLE,
+		START_BIT,
+		DATA_BITS,
+		STOP_BITS,
+	} tx_state_e;  
+    
+//Baud Rate Generator:
+    wire [15:0] baud_divisor = {DLM, DLL};
+    localparam CLK_PER_BIT = 16; //16 clock div.
+    wire [19:0] rate_limit = baud_divisor * CLK_PER_BIT;
+    reg [19:0] clk_counter;
+	logic tx_bit_clk_en; //Enables Baud Rate of 1x
+
+    always_ff @(posedge clk or posedge rst) begin
+    if (rst) begin
+		clk_counter <= 0;
+		tx_bit_clk_en <= 1'b0;
+    end else begin
+	    if (clk_counter == rate_limit - 1) begin
+		clk_counter <= 0;
+		tx_bit_clk_en <= 1'b1;
+    end else begin
+				clk_counter <= clk_counter + 1;
+				tx_bit_clk_en <= 1'b0;
+	        end
+	    end
+	end
+
+    //TX State Registers
+    reg [2:0] tx_state_c, tx_state_n //3 bits for the state
+    wire tx_data_avail = ~fifo_empty; // Check if there's data to send
+    wire tx_fifo_rreq = (tx_state_c == IDLE) && tx_data_avail; //FIFO request signal
+    //output for assign TX State
+    assign tx_o = (tx_state_c == DATA_BITS) ? tx_shift_reg[0] : // Transmit LSB first
+                  ((tx_state_c == IDLE) || (tx_state_c == STOP_BITS)) ? 1'b1 : // Idle/Stop is '1' (Mark)
+                  1'b0; // Start bit is '0' (Space)
+
+    
 /***************************ERROR DETECTION***************************/
 // Parity, framing, overrun errors  
 endmodule
+
