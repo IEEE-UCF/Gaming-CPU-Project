@@ -3,7 +3,7 @@
 module fetch(
     input logic [31:0] pc_q,          //Program Counter, Tells I-Cache where to look
     input logic redir_i,              //Tells Fetch to redirect the PC
-    input logic clk_i, rst_i          //Clock, Reset 
+    input logic clk_i, rst_i,          //Clock, Reset 
     //I-cache interface: stores instructions for quick access
     //req: asks for instruction
     input logic ic_req_valid,         //Fetch requests instruction from I-cache
