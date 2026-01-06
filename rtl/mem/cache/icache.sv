@@ -1,3 +1,11 @@
+
+/*
+  add next state combinational logic -- kinda finished
+  add replacement/evict logic -- working on it
+  add communiaction with L2 cache -- later
+  refine state machine -- might be good
+*/
+
 module icache #(
     parameter int INSTR_WIDTH = 32,
     parameter int ADDR_WIDTH = 32,
@@ -12,14 +20,16 @@ module icache #(
 
     // CPU <-> I$ Interface
     input logic cpu_req_valid_i,
-    input logic [ADDR_WIDTH-1 : 0] cpu_addr_i,
+    input logic [ADDR_WIDTH-1:0] cpu_addr_i,
     input logic cpu_resp_ready_i,
     output logic icache_req_ready_o,
     output logic icache_resp_valid_o,
-    output logic [INSTR_WIDTH-1 : 0] icache_resp_instr_o,
+    output logic [INSTR_WIDTH-1:0] icache_resp_instr_o,
 
     // TLB -> I$ Interface
-    input logic [TAG-1 : 0] tlb_pa_tag_i,
+    // the value 18 is based on current iteration
+    //can change based on localparam "TAG"
+    input logic [18:0] tlb_pa_tag_i,
     input logic tlb_req_ready_i,
     input logic tlb_resp_valid_i,
     output logic icache_tlb_resp_ready_o,
@@ -28,7 +38,7 @@ module icache #(
     input logic l2_ready_i,
     input logic l2_valid_i,
     output logic icache_l2_req_o,
-    input logic [ADDR_WIDTH-1 : 0] l2_addr_i,
+    input logic [ADDR_WIDTH-1:0] l2_addr_i,
     input logic [LINE_SIZE*8-1:0] l2_data_i
 );
 
@@ -43,26 +53,30 @@ module icache #(
   logic [LINE_SIZE*8-1:0] icache_data[SETS][WAYS];
   logic valid_bits[SETS][WAYS];
 
+  logic [LINE_SIZE*8-1:0] icache_l2_data_reg;
+
   // hold different address portions
-  logic [TAG-1 : 0] addr_tag_virtual;
-  logic [INDEX-1 : 0] addr_index;
-  logic [OFFSET-1 : 0] addr_offset;
+  logic [TAG-1:0] addr_tag_virtual;
+  logic [INDEX-1:0] addr_index;
+  logic [OFFSET-1:0] addr_offset;
 
   // cache hit
-  logic [$clog2(WAYS)-1 : 0] hit_way;
+  logic [$clog2(WAYS)-1:0] hit_way;
   logic cache_tag_hit;
 
   // instruction output
-  logic [INSTR_WIDTH-1 : 0] icache_resp_instr_next;
+  logic [INSTR_WIDTH-1:0] icache_resp_instr_next;
   logic icache_resp_valid_next;
 
   // grab entire set preemptively
   logic [LINE_SIZE*8-1:0] line_data[WAYS];
 
-  // placeholder this is terrible
+  // placeholder replacement/evict logic -- this is terrible
   logic evict_done;
+  logic [$clog2(WAYS)-1:0] victim_way;
 
-  assign icache_req_ready_o = (current_state = CACHE_IDLE) ? 1'b1 : 1'b0;
+  assign icache_req_ready_o = (current_state == CACHE_IDLE) ? 1'b1 : 1'b0;
+
 
   typedef enum logic [3:0] {
     CACHE_IDLE,
@@ -77,51 +91,15 @@ module icache #(
   cache_state_t current_state = CACHE_IDLE;
   cache_state_t next_state = CACHE_IDLE;
 
-  // tag lookup
-  always_comb begin
-    cache_tag_hit = 1'b0;
-    hit_way = '0;
-    if (current_state == CACHE_LOOKUP) begin
-      for (int way = 0; way < WAYS; way++) begin
-        if (tlb_pa_tag_i == icache_tags[addr_index][way] && valid_bits[addr_index][way]) begin
-          hit_way = way;
-          cache_tag_hit = 1'b1;
-          break;
-        end
-      end
-    end
-  end
-
-  // grab entire line data at set
-  always_comb begin
-    line_data = '0;
-    if (current_state == CACHE_LOOKUP) begin
-      line_data = icache_data[addr_index];
-    end
-  end
-
-  //output data logic
-  always_comb begin
-    icache_resp_instr_next = '0;
-    icache_resp_valid_next = 1'b0;
-    if (cache_tag_hit && current_state == CACHE_LOOKUP) begin
-      icache_resp_instr_next = line_data[hit_way][addr_offset*8+ADDR_WIDTH-1 : addr_offset*8];
-      icache_resp_valid_next = 1'b1;
-    end
-  end
-
-  // register intstruction into output
-  always_ff @(posedge clk_i) begin
-    icache_resp_instr_o <= icache_resp_instr_next;
-    icache_resp_valid_next <= icache_resp_valid_next;
-  end
 
   // address slicing into offset and index
-  always_comb begin
-    addr_index = cpu_addr_i[OFFSET+INDEX-1 : OFFSET];
-    addr_offset = cpu_addr_i[OFFSET-1 : 0];
-    addr_tag_virtual = cpu_addr_i[ADDR_WIDTH-1 : OFFSET+INDEX];
-  end
+  assign addr_index = cpu_addr_i[OFFSET+INDEX-1:OFFSET];
+  assign addr_offset = cpu_addr_i[OFFSET-1:0];
+  assign addr_tag_virtual = cpu_addr_i[ADDR_WIDTH-1:OFFSET+INDEX];
+
+  /*//////////////////////////////////////////////
+  * GLOBAL RESET / FENCE.I OPERATIONS
+  ////////////////////////////////////////////////*/
 
   // rst_ni invalidate all cache lines
   always_ff @(posedge clk_i or negedge rst_ni) begin
@@ -149,6 +127,80 @@ module icache #(
     end
   end
 
+  /*//////////////////////////////////////////////
+  * CACHE LOOKUP
+  ////////////////////////////////////////////////*/
+
+  // tag lookup
+  always_comb begin
+    cache_tag_hit = 1'b0;
+    hit_way = '0;
+    if (current_state == CACHE_LOOKUP) begin
+      for (int way = 0; way < WAYS; way++) begin
+        if (tlb_pa_tag_i == icache_tags[addr_index][way] && valid_bits[addr_index][way]) begin
+          hit_way = way;
+          cache_tag_hit = 1'b1;
+        end
+      end
+    end
+  end
+
+  // grab entire line data at set
+  always_comb begin
+    line_data = '0;
+    if (current_state == CACHE_LOOKUP) begin
+      line_data = icache_data[addr_index];
+    end
+  end
+
+  /*//////////////////////////////////////////////
+  * CACHE MISS / FETCH
+  ////////////////////////////////////////////////*/
+
+  always_ff @(posedge clk_i) begin
+    if (l2_valid_i) begin
+      icache_l2_data_reg <= l2_data_i;
+    end
+  end
+
+  /*////////////////////////////////////////////////
+  * CACHE EVICT
+  * --need logic to identify victim way
+  ////////////////////////////////////////////////*/
+
+  always_ff @(posedge clk_i) begin
+    evict_done <= 1'b0;
+    if (current_state == CACHE_EVICT) begin
+      icache_data[addr_index][victim_way] <= icache_l2_data_reg;
+      evict_done <= 1'b1;
+    end
+  end
+
+  /*//////////////////////////////////////////////
+  * CACHE OUTPUT
+  ////////////////////////////////////////////////*/
+
+  //output data next
+  always_comb begin
+    icache_resp_instr_next = '0;
+    icache_resp_valid_next = 1'b0;
+    if (cache_tag_hit && current_state == CACHE_LOOKUP) begin
+      icache_resp_instr_next = line_data[hit_way][addr_offset*8+ADDR_WIDTH-1:addr_offset*8];
+      icache_resp_valid_next = 1'b1;
+    end
+  end
+
+  // register next into output
+  always_ff @(posedge clk_i) begin
+    icache_resp_instr_o <= icache_resp_instr_next;
+    icache_resp_valid_o <= icache_resp_valid_next;
+  end
+
+
+  /*//////////////////////////////////////////////
+  * STATE CONTROL / TRANSITION
+  ////////////////////////////////////////////////*/
+
   // register next state into current state
   always_ff @(posedge clk_i) begin
     if (!rst_ni) begin
@@ -166,8 +218,11 @@ module icache #(
         if (cpu_req_valid_i && icache_req_ready_o) next_state = CACHE_LOOKUP;
       end
       CACHE_LOOKUP: begin
-        if (cache_tag_hit) next_state = CACHE_HIT;
-        else next_state = CACHE_MISS;
+        if (cache_tag_hit) begin
+          next_state = CACHE_HIT;
+        end else begin
+          next_state = CACHE_MISS;
+        end
       end
       CACHE_HIT: begin
         if (cpu_resp_ready_i && icache_resp_valid_o) next_state = CACHE_OUTPUT;
@@ -179,6 +234,7 @@ module icache #(
         if (l2_valid_i) next_state = CACHE_EVICT;
       end
       CACHE_EVICT: begin
+        // change later, this is placeholder
         if (evict_done) next_state = CACHE_LOOKUP;
       end
       CACHE_OUTPUT: begin
@@ -191,11 +247,3 @@ module icache #(
     endcase
   end
 endmodule
-
-/*
-  add next state combinational logic -- kinda finished
-  add replacement/evict logic -- working on it
-  add communiaction with L2 cache -- later
-  refine state machine -- might be good
-*/
-
