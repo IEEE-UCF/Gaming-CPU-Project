@@ -1,5 +1,4 @@
 //Fetch Module
-
 module fetch(
 //Global Signals
         input  logic         clk_i, rst_ni,    //Clock, Reset(Active-Low)
@@ -51,3 +50,4 @@ module fetch(
     end
 
 endmodule
+
