@@ -1,10 +1,10 @@
-# CLINT - Module Brief (v0.2)
+# CLINT - Module Brief (v0.3)
 
 **Owner:** Gavin Wiese  
 **RTL:** rtl/irq/clint.sv  
 
 ### Purpose & Role
-The Core Local Interruptor (CLINT) is placed near the CPU core, as interrupts are sent directly to the core via the memory-mapped AXI bus. The CLINT provides two types of interrupts: **timer-based** (`timer_irq_o`) and **software-based** (`soft_irq_o`). It ensures that events from the timer or software are recognized promptly by the CPU.
+The Core Local Interruptor (CLINT) is placed near the CPU core, as interrupts are sent directly to the core via memory. The CLINT provides two types of interrupts: **timer-based** (`timer_irq_o`) and **software-based** (`soft_irq_o`). It ensures that events from the timer or software are recognized promptly by the CPU.
 
 ### Parameters  
 
@@ -22,6 +22,10 @@ The Core Local Interruptor (CLINT) is placed near the CPU core, as interrupts ar
 | soft_irq_o     | out     | 1         | Software interrupt output        |
 | clk_i          | in      | 1         | System clock                     |
 | rst_ni         | in      | 1         | Active-low reset                 |
+| msip_we        | in      | 1         | Write enable for `msip` register |
+| msip_wdata     | in      | 1         | Data to write to `msip`          |
+| mtimecmp_we    | in      | 1         | Write enable for `mtimecmp` register |
+| mtimecmp_wdata | in      | 64        | Data to write to `mtimecmp`      |
 
 ### Reset/Init  
 
@@ -39,7 +43,7 @@ The CLINT exposes three memory-mapped registers:
 - **`mtimecmp`** – Timer compare register. When the internal 64-bit counter `mtime` reaches or exceeds this value, `timer_irq_o` is asserted until a new, greater value is written.  
 - **`mtime`** – A 64-bit free-running counter that increments at the system clock rate. Software can read this register for timing purposes.
 
-All registers are accessible through the memory-mapped AXI bus at addresses defined in the SoC register map.
+All registers are accessible via write-enable and data inputs (`*_we`, `*_wdata`).
 
 ### Errors/IRQs
 
@@ -57,7 +61,7 @@ The CLINT does not generate additional error signals.
 
 ### Dependencies
 
-The CLINT depends on `clk_i` to increment `mtime` and `rst_ni` to initialize internal registers. It must be connected to the CPU core so software can access the memory-mapped registers and receive the interrupt outputs.
+The CLINT depends on `clk_i` to increment `mtime` and `rst_ni` to initialize internal registers. Write-enable (`*_we`) and write-data (`*_wdata`) inputs are required to update the `msip` and `mtimecmp` registers. It must be connected to the CPU core so software can receive the interrupt outputs.
 
 ### Verification Links
 
