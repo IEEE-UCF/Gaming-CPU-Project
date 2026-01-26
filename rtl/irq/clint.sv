@@ -8,7 +8,7 @@ module clint(
 );
     logic [63:0] mtimecmp;
 
-    always_ff @(posedge clk_i) begin
+    always_ff @(posedge clk_i or negedge rst_ni) begin
         if (!rst_ni) begin
             mtime_o     <= 16'd0;
             mtimecmp    <= 16'd0;
@@ -22,3 +22,4 @@ module clint(
         end
     end
 endmodule
+
