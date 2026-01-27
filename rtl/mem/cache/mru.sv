@@ -1,7 +1,6 @@
 // Most Recently Used (Assuming two-way cache)
 
 module mru #(
-    parameter int WAYS = 2,
     parameter int SETS = 128
 )(
 
@@ -39,12 +38,11 @@ module mru #(
         end
     end
 
-
     always_ff @(posedge clk_i or negedge rst_ni) begin
 
         if (!rst_ni) begin
             foreach (mru_bits[i])
-                mru[bits[i]] <= 1'b0;
+                mru_bits[i] <= 1'b0;
 
         end else if (isthere_hit_i) begin
 
@@ -54,7 +52,7 @@ module mru #(
         end else if (isthere_miss_i) begin
 
             // if there's a miss, invert bit to track the victim way
-            mru_bits[set_index_i] <= ~mru_bits[set_index_i];
+            mru_bits[set_index_i] <= way_to_evict_o;
 
         end
     end
