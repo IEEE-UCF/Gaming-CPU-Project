@@ -10,41 +10,44 @@ module dcache #(
     input logic rst_ni, // Active low reset
 
     // CPU -> D$ Store Instr.
-    input  logic                    cpu_we_i,                // 1=store, 0=load
-    input  logic                    cpu_req_valid_i,         // Request Valid
-    output logic                    dcache_cpu_req_ready_o,  // Cache Ready
+    input  logic                    cpu_load_store_i,    // 1=store, 0=load
+    input  logic                    cpu_req_valid_i,     // Request valid
+    output logic                    dcache_req_ready_o,  // Cache ready
     input  logic [  ADDR_WIDTH-1:0] cpu_addr_i,
-    input  logic [  DATA_WIDTH-1:0] cpu_wdata_i,             // Write -> Cache
-    input  logic [DATA_WIDTH/8-1:0] cpu_wstrb_i,             // Byte-Enabled
+    input  logic [  DATA_WIDTH-1:0] cpu_write_i,         // Store data
+    input  logic [DATA_WIDTH/8-1:0] cpu_byte_en_i,       // byte-enables
+    input  logic                    dcache_flush_i,      // Flush D$
 
     // D$ -> CPU Load Data
-    output logic                  dcache_cpu_resp_valid_o,  // D$ Response Valid
-    input  logic                  cpu_resp_ready_i,         // CPU Ready
-    output logic [DATA_WIDTH-1:0] dcache_resp_rdata_o,      // CPU Load
-    //output logic [ADDR_WIDTH-1:0] dcache_resp_addr_o,
+    output logic dcache_resp_valid_o,  // response valid
+    input  logic cpu_resp_ready_i,     // CPU can accept resp
+    output logic [DATA_WIDTH-1:0] dcache_resp_rdata_o,   // load data
 
-    // TLB <-> D$ Interface
-    input  logic [TAG-1 : 0] tlb_pa_tag_i,            // Returned Physical Tag
-    output logic [TAG-1 : 0] virt_addr_tag_o,         // VA to be Translated
-    output logic             dcache_tlb_req_valid_o,  // D$ TLB Request Valid
-    input  logic             tlb_req_ready_i,         // TLB Ready
-    input  logic             tlb_resp_valid_i,        // TLB Response Valid
-    output logic             dcache_tlb_resp_ready_o, // D$ Response Ready
+    // TLB -> D$ Interface
+    input logic tlb_req_ready_i,  // TLB ready for translation
+    input logic tlb_resp_valid_i,  // TLB response is valid
+    input logic [ADDR_WIDTH-1:0] tlb_resp_pa_i,  // PA from TLB
 
-    // L2$ <-> D$ Interface
-    input logic l2_ready_i,
-    input logic l2_valid_i,
-    input logic [ADDR_WIDTH-1 : 0] l2_addr_i,
-    input logic [LINE_BYTES*8-1:0] l2_data_i,
+    // D$ -> TLB Interface
+    output logic dcahce_tlb_req_valid_o,  // Req. to send VA to TLB
+    output logic [ADDR_WIDTH-1:0] dcache_tlb_valid_o,  // VA to be translated
+    output logic dcache_tlb_resp_ready_o,  // D$ ready to accept TLB response
 
-    // Miss Unit Controller <-> L2$ ???
-    input logic controller_req_ready_i,
-    input logic controller_resp_valid_i,
-    output logic dcache_controller_req_ready_o,
-    output logic dcache_controller_res_valid_o,
-    output logic [DATA_WIDTH-1:0] dcache_controller_evict_data_o,
-    output logic [ADDR_WIDTH-1:0] dcache_controller_evict_addr_o,
-    input logic [$clog(WAYS)-1:0] victim_way // cache_miss_unit.sv determines evicted line?
+    // D$ <-> Replacement Policy Logic (this will prob need changes)
+    output logic dcache_evict_req_valid_o,  // Req. to send set index for eviction,
+    output logic [SETS-1:0] dcache_set_evict_o,  // Set in which line will be replaced
+    input logic evict_resp_valid,  // Evict response valid
+    input logic dcache_evict_way_i,  // Specific line to replace
+    input logic victim_valid,  // 0=empty, 1=occupied
+
+    // D$ <-> AXI Interface (subject to change)
+    input logic axi_ready_i,
+    input logic axi_valid_i,
+    output logic dcache_axi_req_o,
+    output logic [ADDR_WIDTH-1:0] dcache_axi_addr_o,
+    output logic [DATA_WIDTH-1:0] dcache_axi_data_o,
+    input logic [ADDR_WIDTH-1:0] axi_address_i,
+    input logic [LINE_BYTES*8-1:0] axi_data_i
 );
 
   // Local constants
@@ -64,11 +67,14 @@ module dcache #(
   logic [INDEX-1:0] virt_index;
   logic [TAG-1:0] virt_tag;
   logic [TAG-1:0] pa_tag;
+  assign virt_offset = cpu_addr_i[0+:OFFSET];
+  assign virt_index = cpu_addr_i[OFFSET+:INDEX];
+  assign virt_tag = cpu_addr_i[(OFFSET+INDEX)+:TAG];
 
-  // Cache Hit Logic
+  // Cache Hit / Replacement Logic
   logic cache_hit;
-  logic [WAYS:0] hit_way;
-  localparam int BWIDTH = DATA_WIDTH / 8;
+  logic [WAYS-1:0] hit_way;
+  //logic evict_way;
 
   typedef enum logic [3:0] {
     CACHE_IDLE,
@@ -77,94 +83,95 @@ module dcache #(
     CACHE_MISS,
     CACHE_ALLOCATE,
     CACHE_WRITEBACK,
-    CACHE_EVICT,
     CACHE_RESPOND
   } cache_state_t;
-
   cache_state_t current_state, next_state;
 
   // Reset Cache Lines, Initiate FSM
   always_ff @(posedge clk_i or negedge rst_ni) begin
-    if (!rst_ni) begin
+    if (!rst_ni || dcache_flush_i) begin
       current_state <= CACHE_IDLE;
       for (int set = 0; set < SETS; set++)
       for (int way = 0; way < WAYS; way++) begin
         valid_bits[set][way] <= 1'b0;
         dirty_bits[set][way] <= 1'b0;
       end
-    end else begin
-      current_state <= next_state;
     end
-  end
-
-  // Split Virtual Address
-  always_comb begin
-    virt_offset = cpu_addr_i[0+:OFFSET];
-    virt_index = cpu_addr_i[OFFSET+:INDEX];
-    virt_tag = cpu_addr_i[(OFFSET+INDEX)+:TAG];
   end
 
   // Cache Lookup Logic
   always_comb begin
     cache_hit = 1'b0;
-    pa_tag = tlb_pa_tag_i;
-    if (current_state == CACHE_LOOKUP && tlb_resp_valid_i)
+    pa_tag = 'b0;
+    if (current_state == CACHE_LOOKUP && tlb_resp_valid_i) begin
+      pa_tag = tlb_resp_pa_i[TAG-1:INDEX];
       for (int way = 0; way < WAYS; way++) begin
         if (valid_bits[virt_index][way] && (dcache_tags[virt_index][way] == pa_tag)) begin
           cache_hit = 1'b1;
-          hit_way = way;
+          hit_way   = way;
         end
       end
+    end
   end
 
-  // Returning Requested Data to CPU
+  // TLB Translation Logic (this might be incomplete)
   always_comb begin
-    dcache_cpu_resp_valid_o = 1'b0;
+    dcache_tlb_req_valid_o = 1'b1;
+    dcache_tlb_resp_ready = 1'b0;
+    dcache_tlb_valid_o = 'b0;
+    if (current_state == CACHE_LOOKUP && tlb_req_ready_i) begin
+      dcache_tlb_va_o = cpu_addr_i;
+      dcache_tlb_resp_ready_o = 1'b1;
+    end
+  end
+
+  // CPU Store: Write data to specified line already in cache
+  always_ff @(posedge clk_i) begin
+    if (current_state == CACHE_STORE) begin
+      for (int b = 0; b < (DATA_WIDTH / 8); b++) begin
+        if (cpu_byte_en_i[i]) begin
+          dcache_data[virt_index][hit_way][offset+(b*8)] <= cpu_write_i[(b*8)+:8];
+        end
+      end
+    end
+    dirty_bits[virt_index][hit_way] <= 1'b1;
+
+  end
+
+  // CPU Load: Returning requested data to CPU
+  always_comb begin
+    dcache_resp_valid_o = 1'b0;
     dcache_resp_rdata_o = '0;
-    if (current_state == CACHE_RESPOND) begin
-      if (!cpu_we_i) begin
-        dcache_resp_rdata_o = dcache_data[virt_index][hit_way];
-      end
-      dcache_cpu_resp_valid_o = 1'b1;
+    if (current_state == CACHE_RESPOND && cpu_resp_ready_i) begin
+      dcache_resp_rdata_o = dcache_data[virt_index][hit_way];
+      dcache_resp_valid_o = 1'b1;
     end
   end
 
-  // Write to Appropriate Cache Line
-  always_ff @(posedge clk_i) begin
-    if (current_state == CACHE_HIT && cache_hit) begin
-      if (cpu_we_i) begin
-        for (int b = 0; b < BWIDTH; b++) begin
-          if (cpu_wstrb_i[b]) begin
-            dcache_data[virt_index][hit_way][virt_offset+b] <= cpu_wdata_i[b*8+:8*8];
-          end
-        end
-        dirty_bits[virt_index][hit_way] <= 1'b1;
-      end
+  // Cache Allocate
+  always_ff @(posedge clk) begin
+    dcache_axi_req_o <= 1'b1;
+    if (current_state == CACHE_ALLOCATE) begin
+      // FINSIH
     end
   end
 
-  // Allocate New Line From $L2 & If Dirty, Writeback
-  always_ff @(posedge clk_i) begin
-    if(current_state == CACHE_ALLOCATE) begin
-      if(dirty_bits[virt_index][victim_way] == 1'b1 && controller_req_ready_i) begin
-        dcache_controller_evict_data_o <= dcache_data[virt_index][victim_way];
-      end
-      dcache_data[virt_index][victim_way] <= l2_data_i;
-      dcache_controller_res_valid_o <= 1'b1;
+  // Next State Sequential Logic
+  always_ff @(posedge clk or negedge rst_ni) begin
+    if (!rst_ni || dcache_flush_i) begin
+      current_state <= CACHE_IDLE;
+    end else begin
+      current_state <= next_state;
     end
   end
 
-  // FSM Logic
+  // Next State Combinational Logic
   always_comb begin
-    virt_addr_tag_o = virt_tag_tag;
-    dcache_tlb_req_valid_o = 1'b0;
-    dcache_cpu_req_ready_o = (current_state == CACHE_IDLE);
     next_state = current_state;
-
+    dcache_req_ready_o = (current_state == CACHE_IDLE);
     case (current_state)
       CACHE_IDLE: begin
-        if (cpu_req_valid_i && dcache_cpu_req_ready_o && tlb_req_ready_i) begin
-          dcache_tlb_req_valid_o = 1'b1;
+        if (cpu_req_valid_i && dcache_req_ready_o && tlb_req_ready_i) begin
           next_state = CACHE_LOOKUP;
         end
       end
@@ -180,28 +187,35 @@ module dcache #(
       end
 
       CACHE_HIT: begin
-        if(!cpu_we_i) begin
+        if (cpu_load_store_i == 0) begin
           next_state = CACHE_RESPOND;
-        end
-        else begin
-          next_state = CACHE_IDLE;
-        end
-      end
-
-      CACHE_RESPOND: begin
-        if(dcache_cpu_resp_valid_o) begin
-          next_state = CACHE_IDLE;
+        end else begin
+          next_state = CACHE_STORE;
         end
       end
 
       CACHE_MISS: begin
-        if (l2_valid_i) begin
-          next_state = CACHE_ALLOCATE;
+        dcache_set_evict_o = virt_index;
+        dcache_evict_req_valid_o = 1'b1;
+        if (evict_resp_valid) begin
+          if (!victim_valid) begin
+            next_state = CACHE_ALLOCATE;
+          end else if (victim_valid && !dirty_bits[virt_index][dcache_evict_way_i]) begin
+            next_state = CACHE_ALLOCATE;
+          end else if (victim_valid && dirty_bits[virt_index[dcache_evict_way_i]]) begin
+            next_state = CACHE_WRITEBACK;
+          end
         end
       end
 
       CACHE_ALLOCATE: begin
         next_state = CACHE_IDLE;
+      end
+
+      CACHE_RESPOND: begin
+        if (dcache_resp_valid_o) begin
+          next_state = CACHE_IDLE;
+        end
       end
 
       default: begin
@@ -211,3 +225,4 @@ module dcache #(
   end
 
 endmodule
+
