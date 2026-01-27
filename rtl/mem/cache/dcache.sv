@@ -29,17 +29,26 @@ module dcache #(
     output logic             dcache_tlb_req_valid_o,  // D$ TLB Request Valid
     input  logic             tlb_req_ready_i,         // TLB Ready
     input  logic             tlb_resp_valid_i,        // TLB Response Valid
-    output logic             dcache_tlb_resp_ready_o, // D$ Resposne Ready
+    output logic             dcache_tlb_resp_ready_o, // D$ Response Ready
 
     // L2$ <-> D$ Interface
     input logic l2_ready_i,
     input logic l2_valid_i,
     input logic [ADDR_WIDTH-1 : 0] l2_addr_i,
-    input logic [LINE_BYTES*8-1:0] l2_data_i
+    input logic [LINE_BYTES*8-1:0] l2_data_i,
+
+    // Miss Unit Controller <-> L2$ ???
+    input logic controller_req_ready_i,
+    input logic controller_resp_valid_i,
+    output logic dcache_controller_req_ready_o,
+    output logic dcache_controller_res_valid_o,
+    output logic [DATA_WIDTH-1:0] dcache_controller_evict_data_o,
+    output logic [ADDR_WIDTH-1:0] dcache_controller_evict_addr_o,
+    input logic [$clog(WAYS)-1:0] victim_way // cache_miss_unit.sv determines evicted line?
 );
 
   // Local constants
-  localparam int SETS = DMEM_SIZE / (WAYS * LINE_BYTES);  // 129 sets
+  localparam int SETS = DMEM_SIZE / (WAYS * LINE_BYTES);  // 128 sets
   localparam int OFFSET = $clog2(LINE_BYTES);  // 6 bits
   localparam int INDEX = $clog2(SETS);  // 7 bits
   localparam int TAG = ADDR_WIDTH - OFFSET - INDEX;  // 19 bits
@@ -92,7 +101,7 @@ module dcache #(
   always_comb begin
     virt_offset = cpu_addr_i[0+:OFFSET];
     virt_index = cpu_addr_i[OFFSET+:INDEX];
-    virt_tag = cpu_addr_i[OFFSET+INDEX+:TAG];
+    virt_tag = cpu_addr_i[(OFFSET+INDEX)+:TAG];
   end
 
   // Cache Lookup Logic
@@ -103,7 +112,7 @@ module dcache #(
       for (int way = 0; way < WAYS; way++) begin
         if (valid_bits[virt_index][way] && (dcache_tags[virt_index][way] == pa_tag)) begin
           cache_hit = 1'b1;
-          hit_way   = way;
+          hit_way = way;
         end
       end
   end
@@ -126,11 +135,22 @@ module dcache #(
       if (cpu_we_i) begin
         for (int b = 0; b < BWIDTH; b++) begin
           if (cpu_wstrb_i[b]) begin
-            dcache_data[virt_index][hit_way][virt_offset+b] <= cpu_wdata_i[b*8+:8];
+            dcache_data[virt_index][hit_way][virt_offset+b] <= cpu_wdata_i[b*8+:8*8];
           end
         end
         dirty_bits[virt_index][hit_way] <= 1'b1;
       end
+    end
+  end
+
+  // Allocate New Line From $L2 & If Dirty, Writeback
+  always_ff @(posedge clk_i) begin
+    if(current_state == CACHE_ALLOCATE) begin
+      if(dirty_bits[virt_index][victim_way] == 1'b1 && controller_req_ready_i) begin
+        dcache_controller_evict_data_o <= dcache_data[virt_index][victim_way];
+      end
+      dcache_data[virt_index][victim_way] <= l2_data_i;
+      dcache_controller_res_valid_o <= 1'b1;
     end
   end
 
@@ -160,11 +180,22 @@ module dcache #(
       end
 
       CACHE_HIT: begin
-        next_state = CACHE_RESPOND;
+        if(!cpu_we_i) begin
+          next_state = CACHE_RESPOND;
+        end
+        else begin
+          next_state = CACHE_IDLE;
+        end
+      end
+
+      CACHE_RESPOND: begin
+        if(dcache_cpu_resp_valid_o) begin
+          next_state = CACHE_IDLE;
+        end
       end
 
       CACHE_MISS: begin
-        if (l2_addr_i) begin
+        if (l2_valid_i) begin
           next_state = CACHE_ALLOCATE;
         end
       end
