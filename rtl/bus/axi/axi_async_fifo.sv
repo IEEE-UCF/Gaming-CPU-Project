@@ -35,12 +35,11 @@ module axi_async_fifo #(
     localparam int PTR_SIZE = PTR_WIDTH + 1;
 
     // Memory address width (N bits)
-    localparam int ADDR_WIDTH = PTR_WIDTH
+    localparam int ADDR_WIDTH = PTR_WIDTH;
     
     // Ensure that FIFO_DEPTH is a power of 2 (for simulation)
     initial begin
-        if ((1 << PTR_WIDTH) != FIFO_DEPTH)
-        begin
+        if ((1 << PTR_WIDTH) != FIFO_DEPTH) begin
             $error(1, "axi_async_fifo: FIFO_DEPTH (%0d) is not a power of 2", FIFO_DEPTH);
         end
     end
@@ -59,8 +58,7 @@ module axi_async_fifo #(
         automatic integer i;
         begin
             binary[PTR_WIDTH] = gray[PTR_WIDTH];
-            for (i = PTR_WIDTH-1; i >= 0; i--) 
-                begin
+            for (i = PTR_WIDTH-1; i >= 0; i--) begin
                 binary[i] = binary[i + 1] ^ gray[i];
             end
             GrayToBinary = binary;
@@ -82,22 +80,18 @@ module axi_async_fifo #(
                                   ? (writePtrBinary + 1'b1) 
                                   : writePtrBinary;
                                     
-    assign writePtrGrayNext = binaryToGray(writePtrBinaryNext);
+    assign writePtrGrayNext = BinaryToGray(writePtrBinaryNext);
     
     // Write pointer & memory update register block
-    always_ff @(posedge s_clk_i or negedge s_rst_ni) 
-        begin
-        if (!s_rst_ni) 
-            begin
+    always_ff @(posedge s_clk_i or negedge s_rst_ni) begin
+        if (!s_rst_ni) begin
             writePtrBinary <= '0;
             writePtrGray <= '0;
-        end else 
-            begin
+        end else begin
             writePtrBinary <= writePtrBinaryNext;
             writePtrGray <= writePtrGrayNext;
     
-            if (wr_en && !full) 
-                begin
+            if (wr_en && !full) begin
                 memory[writePtrBinary[PTR_WIDTH-1:0]] <= wr_data;
             end
         end
@@ -105,14 +99,11 @@ module axi_async_fifo #(
     
     // Synchronize read pointer (Gray) into write domain (s_clk_i)
     // readPtrGray is sourced from the m_clk_i domain (see the read domain below)
-    always_ff @(posedge s_clk_i or negedge s_rst_ni) 
-        begin
-        if (!s_rst_ni) 
-            begin
+    always_ff @(posedge s_clk_i or negedge s_rst_ni) begin
+        if (!s_rst_ni) begin
             readPtrGraySync1W <= '0;
             readPtrGraySync2W <= '0;
-        end else 
-            begin
+        end else begin
             readPtrGraySync1W <= readPtrGray;
             readPtrGraySync2W <= readPtrGraySync1W;
         end
@@ -121,8 +112,7 @@ module axi_async_fifo #(
     // Full flag logic (Combinational)
     // Full Condition: next write gray pointer matches synchronized read gray pointer,
     // except for MSB and MSB - 1, which are inverted.
-    always_comb 
-        begin
+    always_comb begin
         fullNext =
             (writePtrGrayNext == {
                 ~readPtrGraySync2W[PTR_WIDTH], // MSB inverted
@@ -132,13 +122,10 @@ module axi_async_fifo #(
     end
 
     // Full flag register
-    always_ff @(posedge s_clk_i or negedge s_rst_ni) 
-        begin
-        if (!s_rst_ni) 
-            begin
+    always_ff @(posedge s_clk_i or negedge s_rst_ni) begin
+        if (!s_rst_ni) begin
             full <= 1'b0;
-        end else 
-            begin
+        end else begin
             full <= fullNext;
         end
     end
@@ -158,25 +145,21 @@ module axi_async_fifo #(
                                 ? (readPtrBinary + 1'b1) 
                                 : readPtrBinary;
                                 
-    assign readPtrGrayNext = binaryToGray(readPtrBinaryNext);
+    assign readPtrGrayNext = BinaryToGray(readPtrBinaryNext);
     
     // Read pointer & data output register block
-    always_ff @(posedge m_clk_i or negedge m_rst_ni) 
-        begin
-        if (!m_rst_ni) 
-            begin
+    always_ff @(posedge m_clk_i or negedge m_rst_ni) begin
+        if (!m_rst_ni) begin
             readPtrBinary <= '0;
             readPtrGray <= '0;
             rd_data <= '0;
-        end else 
-            begin
+        end else begin
             readPtrBinary <= readPtrBinaryNext;
             readPtrGray <= readPtrGrayNext;
 
             // Read data from the location pointed to by the current binary pointer index
             // Data is registered into rd_data on the clock edge.
-            if (rd_en && !empty) 
-                begin
+            if (rd_en && !empty) begin
                     rd_data <= memory[readPtrBinary[ADDR_WIDTH-1:0]];
             end
         end
@@ -186,12 +169,10 @@ module axi_async_fifo #(
     // writePtrGray is sourced from the s_clk_i domain (see write domain above)
     always_ff @(posedge m_clk_i or negedge m_rst_ni) 
         begin
-        if (!m_rst_ni) 
-            begin
+        if (!m_rst_ni) begin
             writePtrGraySync1R <= '0;
             writePtrGraySync2R <= '0;
-        end else 
-            begin
+        end else begin
             writePtrGraySync1R <= writePtrGray;
             writePtrGraySync2R <= writePtrGraySync1R;
         end
@@ -199,23 +180,21 @@ module axi_async_fifo #(
     
     // Empty flag logic: (Combinational)
     // Empty condition: next read gray pointer equals synchronized write gray pointer.
-    always_comb 
-        begin
+    always_comb begin
         emptyNext = (readPtrGrayNext == writePtrGraySync2R);
     end
 
     // Empty flag register
-    always_ff @(posedge m_clk_i or negedge m_rst_ni) 
-        begin
+    always_ff @(posedge m_clk_i or negedge m_rst_ni) begin
         if (!m_rst_ni) begin
             empty <= 1'b1;
-        end else 
-            begin
+        end else begin
             empty <= emptyNext;
         end
     end
 
 endmodule    
     
+
 
 
