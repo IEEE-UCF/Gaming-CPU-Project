@@ -13,7 +13,7 @@ module axi_crossbar #(
     parameter int unsigned N_S = 2,
     parameter int unsigned ADDR_WIDTH = 32,
     parameter int unsigned DATA_WIDTH = 64,
-    parameter int unsigned ID_WIDTH = 4,
+    parameter int unsigned ID_WIDTH = 4
 )(
     // TODO: add ports
     input logic clk_i,
@@ -37,6 +37,7 @@ module axi_crossbar #(
     // TODO: ready/valid handling
     
 endmodule
+
 
 
 
