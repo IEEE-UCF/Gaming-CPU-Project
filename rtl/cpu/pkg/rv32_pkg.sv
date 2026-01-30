@@ -8,7 +8,6 @@ package rv32_pkg;
   
   parameter int unsigned DATA_WIDTH = 32; // Data bus / operand width
   parameter int unsigned ADDR_WIDTH = 32; // Address bus width
-  parameter int unsigned IMM_WIDTH = 12; // Immediate field width
 
   parameter int unsigned MUL_CYCLES = 3; // Multiply latency in cycles
   parameter int unsigned DIV_CYCLES = 5; // Divide latency in cycles
