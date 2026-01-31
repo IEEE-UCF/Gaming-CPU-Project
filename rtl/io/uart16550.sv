@@ -103,7 +103,7 @@ logic [7:0] tx_shift_reg;
 
     //TX State Registers
     reg [2:0] tx_state_c, tx_state_n //3 bits for the state
-    wire tx_data_avail = ~fifo_empty; // Check if there's data to send
+    wire tx_data_avail = ~fifo_empty; // Checks if there's data to send
     wire tx_fifo_rreq = (tx_state_c == IDLE) && tx_data_avail; //FIFO request signal
     //output for assign TX State
     assign tx_o = (tx_state_c == DATA_BITS) ? tx_shift_reg[0] : // Transmit LSB first
@@ -114,4 +114,5 @@ logic [7:0] tx_shift_reg;
 /***************************ERROR DETECTION***************************/
 // Parity, framing, overrun errors  
 endmodule
+
 
