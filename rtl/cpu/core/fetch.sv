@@ -18,31 +18,34 @@ module fetch(
         input  logic [31:0]  ic_rsp_data_i,    //The actual 32-bit instruction returned by I-cache
 
     //Outputs to Decode
-    reg output logic [31:0]  inst_o             //Sends instruction to the Decode Stage
+    reg output logic [31:0]  inst_o            //Sends instruction to the Decode Stage
 );
+    parameter NOP = 32'b0; //Invalid state for Decode
 
     //Cache Request Logic: Instruction is requested by default, unless reset or redirect occurs
-    always_ff(posedge clk_i) begin
-        if(!rst_ni || redir_i)begin  //Doesn't request an instruction
-            ic_req_valid_o <= 0;
-            ic_req_addr_o  <= pc_q;
+    always_comb() begin
+        if(!rst_ni)begin  //Doesn't request an instruction
+            ic_req_valid_o = 0;
+            ic_req_addr_o = pc_q;
         end
-        else begin
-            ic_req_valid_o <= 1;     //Instruction is requested
-            ic_req_addr_o  <= pc_q;
+        else if(redir_i)begin
+            ic_req_valid_o = 0; 
+            ic_req_addr_o = NOP;
         end
+        else begin                   //Instruction is requested
+            ic_req_valid_o = 1;      
+            ic_req_addr_o  = pc_q;
+        end
+        
     end
     //Cache Response Logic: if cache responds, then instruction sent to decode
-    //Otherwise, send decode invalid data (32'b0)
+    //Otherwise, then send decode invalid data (32'b0)
+        //flush and stall old instruction through NOP
     always_ff(posedge clk_i)begin
-         if(redir_i)               inst_o <= 32'b0; //ASK DECODE STAGE
-         else if (!ic_rsp_valid_i) inst_o <= 32'b0; //ASK DECODE STAGE
-         else                      inst_o <= ic_rsp_data_i;
-
-        //flush old instructions for redir/reset
-        //REDIRECT SHOULD STALL
+         if(redir_i || !ic_rsp_valid_i)     inst_o <= NOP; 
+         else                               inst_o <= ic_rsp_data_i;
     end
-
+endmodule
 
 /*CORE DEALS WITH THIS
     //PC logic
@@ -53,4 +56,3 @@ module fetch(
     end
 */
 
-endmodule
