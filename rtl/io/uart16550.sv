@@ -107,8 +107,47 @@ output wire irq_o
     end
 
 /**************************BAUD RATE CALC******************************/
-// Generate baud tick from clk
-
+wire [15:0] baud_divisor = {DLM,DLL};   //16-bit divisor from DLM & DLL
+    wire [3:0] psd_value = PSD [3:0];       // the lower 4-bit are used
+    
+    //clk/(16*(PSD+1)*baud_divisor) -- counter holder for the math 
+    reg [3:0] PSD_counter;         //for PSD+1
+    reg [15:0] divisor_counter;    //divides by divisor
+    reg [3:0] multi_by_16;         //divides by 16
+    reg baud_tick;                 //final baud pulse
+    
+    always @(posedge clk_i or negedge rst_ni) begin 
+        if (rst_ni) begin //reseting the counter
+            PSD_counter <= 4'd0;
+            divisor_counter <= 16'd0;
+            multi_by_16 <= 4'd0;
+            baud_tick <= 1'b0; 
+        end 
+        else begin
+            baud_tick <= 1'b0; //default setting counting clock cycle
+            
+            if (PSD_counter == psd_value) begin // divides by PSD + 1 
+                PSD_counter <= 4'd0;
+            end 
+            else begin 
+                PSD_counter <= PSD_counter + 1'b1; 
+            end
+                
+            if (divisor_counter == baud_divisor - 1) begin //divides by divisor
+                divisor_counter <= 16'd0;
+            end
+            else begin
+                divisor_counter <= divisor_counter + 1'b1; 
+            end 
+            
+            if (multi_by_16 == 4'd15) begin // divide by 16 
+                multi_by_16 <= 16'd0;
+                baud_tick <= 1'b1; 
+            end else begin
+                multi_by_16 <= multi_by_16 + 1'b1; 
+            end 
+        end
+     end
 /***************************TRANSMIT tx_o******************************/
 // FIFO -> shift register -> serial output
 
@@ -128,4 +167,5 @@ output wire irq_o
 /***************************ERROR DETECTION***************************/
 // Parity, framing, overrun errors
 endmodule
+
 
