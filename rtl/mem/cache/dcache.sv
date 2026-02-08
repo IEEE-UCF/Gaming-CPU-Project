@@ -29,7 +29,7 @@ module dcache #(
     input logic [ADDR_WIDTH-1:0] tlb_resp_pa_i,  // PA from TLB
 
     // D$ -> TLB Interface
-    output logic dcahce_tlb_req_valid_o,  // Req. to send VA to TLB
+    output logic dcache_tlb_req_valid_o,  // Req. to send VA to TLB
     output logic [ADDR_WIDTH-1:0] dcache_tlb_valid_o,  // VA to be translated
     output logic dcache_tlb_resp_ready_o,  // D$ ready to accept TLB response
 
@@ -319,4 +319,5 @@ module dcache #(
   end
 
 endmodule
+
 
