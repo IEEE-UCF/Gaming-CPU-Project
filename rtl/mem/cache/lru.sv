@@ -46,10 +46,7 @@ module lru #(
 
   end
 
-  if (way_to_evict_o == 1'b0) assign evicted_line_o = way1_line_i;
-  else assign evicted_line_o = way2_line_i;
-
-
+  assign evicted_line_o = (way_to_evict_o == 1'b0) ? way1_line_i : way2_line_i;
 
   always_ff @(posedge clk_i or negedge rst_ni) begin
 
@@ -79,4 +76,3 @@ module lru #(
   end
 
 endmodule
-;
