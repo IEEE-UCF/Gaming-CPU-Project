@@ -23,7 +23,7 @@ module fetch(
     parameter NOP = 32'b0; //Invalid state for Decode
 
     //Cache Request Logic: Instruction is requested by default, unless reset or redirect occurs
-    always_comb() begin
+    always_comb begin
         if(!rst_ni)begin  //Doesn't request an instruction
             ic_req_valid_o = 0;
             ic_req_addr_o = pc_q;
