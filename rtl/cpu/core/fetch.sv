@@ -1,25 +1,58 @@
 //Fetch Module
-'include "rv32_pkg.cv"
+
 module fetch(
-    input logic [31:0] pc_q,          //Program Counter, Tells I-Cache where to look
-    input logic redir_i,              //Tells Fetch to redirect the PC
-    input logic clk_i, rst_i,          //Clock, Reset 
+//Global Signals
+        input  logic         clk_i, rst_ni,    //Clock, Reset(Active-Low)
+    
+//Local Signals
+        input  logic [31:0]  pc_q,             //Program Counter (address of next instruction of I-cache)
+        input  logic         redir_i,          //Redirects PC to a different address
+
     //I-cache interface: stores instructions for quick access
-    //req: asks for instruction
-    input logic ic_req_valid,         //Fetch requests instruction from I-cache
-    input logic [31:0] ic_req_addr,   //Address of the instruction being requested
+    //req: Request to I-cache
+        output logic         ic_req_valid_o,   //Fetch requests instruction from I-cache
+        output logic [31:0]  ic_req_addr_o,    //Address of the instruction being requested
 
-    //rsp: recieves the instruction
-    output logic ic_rsp_valid,         //Fetch receives the instruction
-    output logic [31:0] ic_rsp_data,   //Fetch takes the data from instruction and uses it
+    //rsp: Response from I-cache
+        input  logic         ic_rsp_valid_i,   //Fetch receives the instruction from I-cache
+        input  logic [31:0]  ic_rsp_data_i,    //The actual 32-bit instruction returned by I-cache
 
-    //Outputs for Decode
-    //IN PROGRESS
-    output logic [31:0] instr_i,      //Contents of instruction
-    output logic [31:0] rf_rdata1     //Address of the instruction
+    //Outputs to Decode
+        output logic [31:0]  inst_o            //Sends instruction to the Decode Stage
 );
-//Logic IN PROGRESS
+    parameter NOP = 32'b0; //Invalid state for Decode
 
-
-
+    //Cache Request Logic: Instruction is requested by default, unless reset or redirect occurs
+    always_comb begin
+        if(!rst_ni)begin  //Doesn't request an instruction
+            ic_req_valid_o = 0;
+            ic_req_addr_o = pc_q;
+        end
+        else if(redir_i)begin
+            ic_req_valid_o = 0; 
+            ic_req_addr_o = NOP;
+        end
+        else begin                   //Instruction is requested
+            ic_req_valid_o = 1;      
+            ic_req_addr_o  = pc_q;
+        end
+        
+    end
+    //Cache Response Logic: if cache responds, then instruction sent to decode
+    //Otherwise, then send decode invalid data (32'b0)
+        //flush and stall old instruction through NOP
+    always_ff(posedge clk_i)begin
+         if(redir_i || !ic_rsp_valid_i)     inst_o <= NOP; 
+         else                               inst_o <= ic_rsp_data_i;
+    end
 endmodule
+
+/*CORE DEALS WITH THIS
+    //PC logic
+    always_ff @(posedge clk_i)begin 
+        if(!rst_ni) pc_q <= 32'b0;                      //reset    ->PC goes to reset address
+        else if(redir_i) pc_q <= Branch/jump address;   //redirect ->PC redirects to Branch/jump address
+        else pc_q <= pc_q + 4;                          //PC increments by 4 by default
+    end
+*/
+
