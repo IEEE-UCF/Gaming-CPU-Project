@@ -24,16 +24,18 @@ module fetch(
 
     //Cache Request Logic: Instruction is requested by default, unless reset or redirect occurs
     always_comb begin
-        if(!rst_ni || redir_i)begin  //Doesn't request an instruction
+        if(!rst_ni)begin // Doesn't request an instruction
             ic_req_valid_o = 0;
         end
-        else begin                   //Instruction is requested
-            ic_req_valid_o = 1;      
+        else if(redir_i)begin
+            ic_req_valid_o = 0; 
         end
+        else begin // Instruction is requested
+            ic_req_valid_o = 1;      
+        end   
     end
 
-    assign ic_req_addr_o  = pc_q; //request address is permanently assigned to pc_q
-
+    assign ic_req_addr_o = pc_q;
     //Cache Response Logic: if cache responds, then instruction sent to decode
     //Otherwise, then send decode invalid data (32'b0)
         //flush and stall old instruction through NOP
