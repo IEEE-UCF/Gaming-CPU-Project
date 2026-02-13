@@ -79,7 +79,7 @@ module uart_tx (
     output logic        fifo_rd_en       //Tells FIFO to pop data
 );
 
-    //1. State Definitions
+    //1. State Definitions (Acts as the brain for the transmitter)
     typedef enum logic [1:0] {
         IDLE      = 2'b00,
         START_BIT = 2'b01,
@@ -91,7 +91,7 @@ module uart_tx (
     logic [7:0] tx_shift_reg;     
     logic [3:0] tx_bit_counter; 
     
-    //2. Baud Rate Generator
+    //2. Baud Rate Generator (creates a tick when a new bit needs to be sent)
     wire [15:0] baud_divisor = {DLM, DLL}; //16 bits is used for RX oversampling.
     localparam CLK_PER_BIT = 16; 
     wire [31:0] rate_limit = baud_divisor * CLK_PER_BIT;
@@ -113,11 +113,11 @@ module uart_tx (
         end
     end
 
-    //3. FIFO Handshake
+    //3. FIFO Handshake (stores for uart_tx)
     //Read enable only for one clock cycle when we move out of IDLE.
     assign fifo_rd_en = (tx_state_c == IDLE && !fifo_empty && tx_bit_clk_en);
 
-    //4. Sequential Engine
+    //4. Sequential Engine (always_ff block builds memory)
     always_ff @(posedge clk or posedge rst) begin
         if (rst) begin
             tx_state_c     <= IDLE;
@@ -142,7 +142,7 @@ module uart_tx (
         end
     end
 
-    //5. Combinational Logic
+    //5. Combinational Logic (if then statements for decision making)
     always_comb begin
         tx_state_n = tx_state_c;
         case (tx_state_c)
@@ -153,10 +153,11 @@ module uart_tx (
             default:   tx_state_n = IDLE;
         endcase
     end
-    //6. Output Assignment
+    //6. Output Assignment (makes the last decision on what the tx_o is doing based on the state that it's in)
     assign tx_o = (tx_state_c == DATA_BITS)  ? tx_shift_reg[0] : 
                   (tx_state_c == START_BIT) ? 1'b0 : 
                   1'b1; //Defaults to High (Idle/Stop)
 
 endmodule
+
 
