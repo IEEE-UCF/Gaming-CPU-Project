@@ -33,7 +33,7 @@ module fetch(
     //Cache Response Logic: if cache responds, then instruction sent to decode
     //Otherwise, then send decode invalid data (32'b0)
         //flush and stall old instruction through NOP
-    always_ff(posedge clk_i)begin
+    always_ff @(posedge clk_i)begin
          if(redir_i || !ic_rsp_valid_i)     inst_o <= NOP; 
          else                               inst_o <= ic_rsp_data_i;
     end
