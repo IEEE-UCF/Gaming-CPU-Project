@@ -24,16 +24,14 @@ module dcache #(
     output logic [DATA_WIDTH-1:0] dcache_resp_rdata_o,   // load data
 
     // TLB -> D$ Interface
-    input logic tlb_req_ready_i,  // TLB ready for translation
+    //input logic tlb_req_ready_i,  // TLB ready for translation
     input logic tlb_resp_valid_i,  // TLB response is valid
     input logic [ADDR_WIDTH-1:0] tlb_resp_pa_i,  // PA from TLB
-
-    // D$ -> TLB Interface
-    output logic dcache_tlb_req_valid_o,  // Req. to send VA to TLB
-    output logic [ADDR_WIDTH-1:0] dcache_tlb_valid_o,  // VA to be translated
     output logic dcache_tlb_resp_ready_o,  // D$ ready to accept TLB response
 
-
+    // D$ -> TLB Interface (likely redundant)
+    //output logic dcache_tlb_req_valid_o,  // Req. to send VA to TLB
+    //output logic [ADDR_WIDTH-1:0] dcache_tlb_valid_o,  // VA to be translated
 
     // D$ <-> Replacement Policy Logic (this will prob need changes)
     output logic dcache_evict_req_valid_o,  // Req. to send set index for eviction,
@@ -59,8 +57,10 @@ module dcache #(
     output logic [LINE_BYTES*8-1:0] dcache_bridge_req_data_o,
     input logic bridge_dcache_resp_valid_i, // FIFO data res is valid
     output logic dcache_bridge_resp_ready_o, // D$ can recieve data from bus queue
-    input logic [LINE_BYTES*8-1:0] bridge_dcache_resp_data, // Data to be written at req. address
+    input logic [LINE_BYTES*8-1:0] bridge_dcache_resp_data_i, // Data to be written at req. address
     output logic dcache_bridge_resp_valid_o // D$ has latched the new data from bus
+
+    /*NOTE: Bit width of 'dcache_bridge_re_data' is likely to change based on bus team specs */
 );
 
   // Local constants
@@ -91,7 +91,7 @@ module dcache #(
   logic [WAYS-1:0] hit_way;
   logic [$clog2(WAYS)-1:0] victim_way;
 
-  // Local flag for write allocation logic
+  // Local flag for write allocation completion
   logic allocation_valid;
   // Local flag for store completion
   logic store_complete;
@@ -122,8 +122,9 @@ module dcache #(
 
   // Cache Lookup Logic
   always_comb begin
-    if(current_state == CACHE_LOOKUP) begin
     cache_hit = 1'b0;
+    hit_way = 1'b0;
+    if(current_state == CACHE_LOOKUP) begin
     if (tlb_resp_valid_i) begin
       for (int way = 0; way < WAYS; way++) begin
         if (valid_bits[virt_index][way] && (dcache_tags[virt_index][way] == pa_tag)) begin
@@ -135,8 +136,8 @@ module dcache #(
     end
   end
 
-  // TLB Translation Logic (this might need adjusting)
-  always_ff @(posedge clk_i or negedge rst_ni) begin
+  // TLB Translation Logic (this might need adjusting, or possibly removed)
+  /*always_ff @(posedge clk_i or negedge rst_ni) begin
       if (current_state == CACHE_LOOKUP) begin
         dcache_tlb_resp_ready_o <= 1'b0;
         dcache_tlb_req_valid_o <= 1'b1;
@@ -151,6 +152,16 @@ module dcache #(
           pa_tag <= tlb_resp_pa_i[TAG-1:INDEX];
         end
       end
+  end*/
+
+  // Updated TLB Translation Logic (subject to change)
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if(current_state == CACHE_LOOKUP) begin
+      if(tlb_resp_valid_i) begin
+        phys_addr <= tlb_resp_pa_i;
+        pa_tag <= tlb_resp_pa_i[TAG-1:INDEX];
+      end
+    end
   end
 
   // CPU Store: Write data to specified line already in cache
@@ -182,7 +193,7 @@ module dcache #(
   always_ff @(posedge clk_i) begin
     if (current_state == CACHE_RESPOND) begin
       dcache_resp_valid_o <= 1'b0;
-      dcahce_resp_rdata_o <= 'b0;
+      dcache_resp_rdata_o <= 'b0;
       if(cpu_resp_ready_i) begin
         dcache_resp_rdata_o <= dcache_data[virt_index][hit_way];
         dcache_resp_valid_o <= 1'b1;
@@ -193,28 +204,20 @@ module dcache #(
   // Cache Allocate: On Write Allocate (subject to change)
   always_ff @(posedge clk_i) begin
     if (current_state == CACHE_ALLOCATE) begin
-      dcache_bridge_req_valid_o <= 1'b1;
-      dcache_bridge_resp_ready_o <= 1'b1;
       allocation_valid <= 1'b0;
       if(bridge_dcache_req_ready_i) begin
         dcache_bridge_req_addr_o <= phys_addr;
-      end else if (dcache_resp_ready_o && bridge_dcache_resp_valid_i) begin
-        dcache_data[virt_index][victim_way] <= bridge_dcache_resp_data;
+      end else if (dcache_bridge_resp_ready_o && bridge_dcache_resp_valid_i) begin
+        dcache_data[virt_index][victim_way] <= bridge_dcache_resp_data_i;
         dcache_tags[virt_index][victim_way] <= pa_tag;
         valid_bits[virt_index][victim_way] <= 1'b1;
 
-        if(cpu_load_store_i == 1'b0) begin
-          dirty_bits[virt_index][victim_way] <= 1'b0;
-        end
-
-        if(cpu_load_store_i == 1) begin
-          for(int b = 0 ; b (DATA_WIDTH / 8) ; b++) begin
-            if(cpu_byte_en_i[b]) begin
-              dcache_data[virt_index][victim_way][virt_offset+(b*8)] <= cpu_write_i[(b*8)+:8];
-            end
+        for(int b = 0 ; b < (DATA_WIDTH / 8) ; b++) begin
+          if(cpu_byte_en_i[b]) begin
+            dcache_data[virt_index][victim_way][virt_offset+(b*8)] <= cpu_write_i[(b*8)+:8];
           end
-          dirty_bits[virt_index][victim_way] <= 1'b1;
         end
+        dirty_bits[virt_index][victim_way] <= 1'b1;
         allocation_valid <= 1'b1;
       end
     end
@@ -223,8 +226,6 @@ module dcache #(
   // Cache Writeback: On Writeback (subject to change)
   always_ff @(posedge clk_i) begin
     if(current_state == CACHE_WRITEBACK) begin
-        dcache_bridge_req_valid_o <= 1'b1;
-        dcache_bridge_resp_ready_o <= 1'b1;
       if (bridge_dcache_req_ready_i) begin
         dcache_bridge_req_addr_o <= phys_addr;
         dcache_bridge_req_data_o <= dcache_data[virt_index][victim_way];
@@ -243,13 +244,21 @@ module dcache #(
     end
   end
 
+  // Dedicated asssign statements based on current state
+  assign dcache_bridge_req_valid_o = (current_state == CACHE_WRITEBACK) ||
+                                     (current_state == CACHE_ALLOCATE);
+  assign dcache_bridge_resp_ready_o = (current_state == CACHE_IDLE) ||
+                                      (current_state == CACHE_ALLOCATE);
+  assign dcache_evict_req_valid_o = (current_state == CACHE_MISS);
+  assign dcache_set_evict_o = (current_state == CACHE_MISS) ? virt_index : 1'b0;
+  assign dcahce_tlb_resp_ready_o = (current_state == CACHE_LOOKUP);
+
   // Next State Combinational Logic
   always_comb begin
     next_state = current_state;
-    dcache_req_ready_o = (current_state == CACHE_IDLE);
     case (current_state)
       CACHE_IDLE: begin
-        if (cpu_req_valid_i && dcache_req_ready_o && tlb_req_ready_i) begin
+        if (cpu_req_valid_i && dcache_req_ready_o) begin
           next_state = CACHE_LOOKUP;
         end
       end
@@ -278,10 +287,7 @@ module dcache #(
         end
       end
 
-
       CACHE_MISS: begin
-        dcache_set_evict_o = virt_index;
-        dcache_evict_req_valid_o = 1'b1;
         if (evict_resp_valid) begin
           if (!victim_valid) begin
             next_state = CACHE_ALLOCATE;
@@ -294,9 +300,7 @@ module dcache #(
       end
 
       CACHE_ALLOCATE: begin
-        if(cpu_load_store_i == 0) begin
-          next_state = CACHE_RESPOND;
-        end else if(cpu_load_store_i && allocation_valid) begin
+        if(cpu_load_store_i && allocation_valid) begin
           next_state = CACHE_IDLE;
         end
       end
@@ -308,7 +312,7 @@ module dcache #(
       end
 
       CACHE_RESPOND: begin
-        if (dcache_resp_valid_o) begin
+        if (dcache_resp_valid_o && cpu_resp_ready_i) begin
           next_state = CACHE_IDLE;
         end
       end
@@ -320,5 +324,7 @@ module dcache #(
   end
 
 endmodule
+
+
 
 
