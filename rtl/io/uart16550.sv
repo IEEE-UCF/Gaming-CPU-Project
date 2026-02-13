@@ -72,11 +72,11 @@ output wire irq_o
 module uart_tx (
     input  logic        clk,
     input  logic        rst,
-    input  logic [7:0]  DLM, DLL,        // Baud divisor registers
-    input  logic [7:0]  fifo_data_out,   // Data sitting at FIFO output
-    input  logic        fifo_empty,      // High if no data
-    output logic        tx_o,            // The actual serial line
-    output logic        fifo_rd_en       // NEW: Tells FIFO to pop data
+    input  logic [7:0]  DLM, DLL,        //Baud divisor registers
+    input  logic [7:0]  fifo_data_out,   //Data sitting at FIFO output
+    input  logic        fifo_empty,      //High if no data
+    output logic        tx_o,            //The actual serial line
+    output logic        fifo_rd_en       //Tells FIFO to pop data
 );
 
     //1. State Definitions
@@ -92,7 +92,7 @@ module uart_tx (
     logic [3:0] tx_bit_counter; 
     
     //2. Baud Rate Generator
-    wire [15:0] baud_divisor = {DLM, DLL}; // Usually, 16 is used for RX oversampling.
+    wire [15:0] baud_divisor = {DLM, DLL}; //16 bits is used for RX oversampling.
     localparam CLK_PER_BIT = 16; 
     wire [31:0] rate_limit = baud_divisor * CLK_PER_BIT;
     reg [31:0] clk_counter;
@@ -156,6 +156,7 @@ module uart_tx (
     //6. Output Assignment
     assign tx_o = (tx_state_c == DATA_BITS)  ? tx_shift_reg[0] : 
                   (tx_state_c == START_BIT) ? 1'b0 : 
-                  1'b1; // Default to High (Idle/Stop)
+                  1'b1; //Defaults to High (Idle/Stop)
 
 endmodule
+
