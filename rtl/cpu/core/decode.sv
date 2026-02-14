@@ -28,12 +28,14 @@ typedef enum logic [3:0] {
   AMO_SC = 4'd1,  // Store-Conditional
   AMO_SWAP = 4'd2,
   AMO_ADD = 4'd3,
-  AMO_AND = 4'd4,
-  AMO_OR = 4'd5,
-  AMO_XOR = 4'd6,
-  AMO_MAX = 4'd7,
-  AMO_MIN = 4'd8,
-  AMO_NONE = 4'd9 // No AMO
+  AMO_XOR = 4'd4,
+  AMO_AND = 4'd5,
+  AMO_OR = 4'd6,
+  AMO_MIN = 4'd7,
+  AMO_MAX = 4'd8,
+  AMO_MINU = 4'd9,
+  AMO_MAXU = 4'd10,
+  AMO_NONE = 4'd11 // No AMO
 } amo_op_e;
 
 // Decode Module
@@ -87,7 +89,9 @@ module decode import rv32_pkg::*; #(
   logic [4:0] rs1;     // Source Register 1 
   logic [4:0] rs2;    // Source Register 2
   logic [6:0] funct7;
-  logic [4:0] shamt;
+  logic [4:0] shamt;  // Shift Instruction
+  logic [3:0] pred; // Fence (predecessor)
+  logic [3:0] succ; // Fence (successor)
 
   assign opcode = instr_i[6:0];
   assign rd     = instr_i[11:7];
@@ -96,7 +100,8 @@ module decode import rv32_pkg::*; #(
   assign rs2    = instr_i[24:20];
   assign funct7 = instr_i[31:25];
   assign shamt = instr_i [24:20];
-
+  assign pred = instr_i[27:24]; // Input/Output/Read/Write before fence
+  assign succ = instr_i[23:20]; // Input/Output/Read/Write after fence
 
   // Immediate Types
   logic [DATA_W-1:0] imm_i_type;
@@ -130,6 +135,7 @@ module decode import rv32_pkg::*; #(
   localparam logic [6:0] OPCODE_AUIPC = 7'b0010111; // Add Upper Immediate to PC
   localparam logic [6:0] OPCODE_SYSTEM = 7'b1110011;  // System Instructions
   localparam logic [6:0] OPCODE_AMO = 7'b0101111; // Atomic Memory Operations, "A" extension
+  localparam logic [6:0] OPCODE_MISC_MEM = 7'b0001111; // Fence Instructions 
 
   // Control
   rv32_ctrl_s ctrl_sig_n; // Next control signals
@@ -157,7 +163,7 @@ module decode import rv32_pkg::*; #(
       OPCODE_LOAD: begin
         imm_n = imm_i_type;
         ctrl_sig_n.alu_src = 1'b1; 
-        ctrl_sig_n.alu_op = 8'h00; // ADD
+        ctrl_sig_n.alu_op = 5'b00000; // ADD
         ctrl_sig_n.mem_read = 1'b1; 
         ctrl_sig_n.reg_wb = 1'b1;
         fu_selec_n = FU_LSU; 
@@ -173,28 +179,31 @@ module decode import rv32_pkg::*; #(
 
       // ALU Immediate (I-Type)
       OPCODE_OP_IMM: begin
-        imm_n = imm_i_type;
         ctrl_sig_n.alu_src = 1'b1;
         ctrl_sig_n.reg_wb = 1'b1;
         fu_select_n = FU_ALU;
+        imm_n = imm_i_type;
         unique case (funct3)
-          3'b000: ctrl_sig_n.alu_op = 8'h00; // ADDI
-          3'b100: ctrl_sig_n.alu_op = 8'h01; // XORI
-          3'b110: ctrl_sig_n.alu_op = 8'h02; // ORI
-          3'b111: ctrl_sig_n.alu_op = 8'h03; // ANDI
-          3'b010: ctrl_sig_n.alu_op = 8'h07; // SLTI
-          3'b011: ctrl_sig_n.alu_op = 8'h08; // SLTIU
+          3'b000: ctrl_sig_n.alu_op = 5'b00111; // ADDI
+          3'b010: ctrl_sig_n.alu_op = 5'b01000; // SLTI
+          3'b011: ctrl_sig_n.alu_op = 5'b01001; // SLTIU
+          3'b100: ctrl_sig_n.alu_op = 5'b01010; // XORI
+          3'b110: ctrl_sig_n.alu_op = 5'b01011; // ORI
+          3'b111: ctrl_sig_n.alu_op = 5'b01100; // ANDI
           3'b001 begin:
-          if (funct7 == 7'b0000000)
-              ctrl_sig_n.alu_op = 8'h04; // SLLI
-            else
+            if (funct7 == 7'b0000000)
+              imm_n = {{27{1'b0}}, shamt}; // Shamt for shift
+              ctrl_sig_n.alu_op = 5'b01101; // SLLI
+            else 
               illegal_instr = 1'b1;
           end
           3'b101: begin
             if (funct7 == 7'b0000000)
-              ctrl_sig_n.alu_op = 8'h05; // SRLI
+              imm_n = {{27{1'b0}}, shamt}; // Shamt for shift
+              ctrl_sig_n.alu_op = 5'b01101; // SRLI
             else if (funct7 == 7'b0100000)
-              ctrl_sig_n.alu_op = 8'h06; // SRAI
+              imm_n = {{27{1'b0}}, shamt}; // Shamt for shift
+              ctrl_sig_n.alu_op = 5'b01110; // SRAI
             else
               illegal_instr = 1'b1;
           end
@@ -202,20 +211,11 @@ module decode import rv32_pkg::*; #(
         endcase
       end
 
-      // AUIPC (U-Type)
-      OPCODE_AUIPC: begin
-        imm_n = imm_u_type;
-        ctrl_sig_n.alu_src = 1'b1;
-        ctrl_sig_n.alu_op = 8'h00; // ADD
-        ctrl_sig_n.reg_wb = 1'b1;
-        fu_select_n = FU_ALU;
-      end 
-
       // Stores (S-Type)
       OPCODE_STORE: begin
         imm_n = imm_s_type;
         ctrl_sig_n.alu_src = 1'b1;
-        ctrl_sig_n.alu_op = 8'h00; // ADD
+        ctrl_sig_n.alu_op = 5'b00111; // ADD
         ctrl_sig_n.mem_write = 1'b1;
         fu_select_n = FU_LSU;
         unique case (funct3)
@@ -235,47 +235,59 @@ module decode import rv32_pkg::*; #(
         if (HAS_M && (funct7 == 7'b0000001)) begin
           unique case (funct3)
             3'b000: begin 
-              ctrl_sig_n.alu_op = 8'h10; fu_selec_n = FU_MUL; end // MUL
+              ctrl_sig_n.alu_op = 5'b10000; fu_selec_n = FU_MUL; end // MUL
             3'b001: begin
-              ctrl_sig_n.alu_op = 8'h11; fu_selec_n = FU_MUL; end // MULH
+              ctrl_sig_n.alu_op = 5'b10001; fu_selec_n = FU_MUL; end // MULH
             3'b010: begin 
-              ctrl_sig_n.alu_op = 8'h12; fu_selec_n = FU_MUL; end // MULSU
+              ctrl_sig_n.alu_op = 5'b10010; fu_selec_n = FU_MUL; end // MULHSU
             3'b011: begin
-              ctrl_sig_n.alu_op = 8'h13; fu_selec_n = FU_MUL; end // MULU
+              ctrl_sig_n.alu_op = 5'b10011; fu_selec_n = FU_MUL; end // MULHU
             3'b100: begin
-              ctrl_sig_n.alu_op = 8'h14; fu_selec_n = FU_DIV; end // DIV
+              ctrl_sig_n.alu_op = 5'b10100; fu_selec_n = FU_DIV; end // DIV
             3'b101: begin
-              ctrl_sig_n.alu_op = 8'h15; fu_selec_n = FU_DIV; end // DIVU
+              ctrl_sig_n.alu_op = 5'b10101; fu_selec_n = FU_DIV; end // DIVU
             3'b110: begin
-              ctrl_sig_n.alu_op = 8'h16; fu_selec_n = FU_DIV; end // REM
+              ctrl_sig_n.alu_op = 5'b10110; fu_selec_n = FU_DIV; end // REM
             3'b111: begin
-              ctrl_sig_n.alu_op = 8'h17; fu_selec_n = FU_DIV; end // REMU
+              ctrl_sig_n.alu_op = 5'b10111; fu_selec_n = FU_DIV; end // REMU
             default: illegal_instr = 1'b1;
           endcase
         end else begin
           unique case ({funct7, funct3})
-            {7'b0000000, 3'b000}: ctrl_sig_n.alu_op = 8'h00; // ADD
-            {7'b0100000, 3'b000}: ctrl_sig_n.alu_op = 8'h09; // SUB
-            {7'b0000000, 3'b111}: ctrl_sig_n.alu_op = 8'h03; // AND
-            {7'b0000000, 3'b110}: ctrl_sig_n.alu_op = 8'h02; // OR
-            {7'b0000000, 3'b100}: ctrl_sig_n.alu_op = 8'h01; // XOR
-            {7'b0000000, 3'b001}: ctrl_sig_n.alu_op = 8'h04; // SLL
-            {7'b0000000, 3'b101}: ctrl_sig_n.alu_op = 8'h05; // SRL
-            {7'b0100000, 3'b101}: ctrl_sig_n.alu_op = 8'h06; // SRA
+            {7'b0000000, 3'b000}: ctrl_sig_n.alu_op = 5'b00111; // ADD
+            {7'b0100000, 3'b000}: ctrl_sig_n.alu_op = 5'b01111; // SUB
+            {7'b0000000, 3'b001}: ctrl_sig_n.alu_op = 5'b01101; // SLL 
+            {7'b0000000, 3'b010}: ctrl_sig_n.alu_op = 5'b01000; // SLT
+            {7'b0000000, 3'b011}: ctrl_sig_n.alu_op = 5'b01001; // SLTU
+            {7'b0000000, 3'b100}: ctrl_sig_n.alu_op = 5'b01010; // XOR
+            {7'b0000000, 3'b101}: ctrl_sig_n.alu_op = 5'b01101; // SRL 
+            {7'b0100000, 3'b101}: ctrl_sig_n.alu_op = 5'b01110; // SRA 
+            {7'b0000000, 3'b110}: ctrl_sig_n.alu_op = 5'b01011; // OR
+            {7'b0000000, 3'b111}: ctrl_sig_n.alu_op = 5'b01100; // AND
             default: illegal_instr = 1'b1;
           endcase
         end
       end
 
+      // AUIPC (U-Type)
+      OPCODE_AUIPC: begin
+        imm_n = imm_u_type;
+        ctrl_sig_n.alu_src = 1'b1;
+        ctrl_sig_n.alu_op = 5'b00111; // ADD
+        ctrl_sig_n.reg_wb = 1'b1;
+        fu_select_n = FU_ALU;
+      end 
+
       // LUI (U-Type)
       OPCODE_LUI: begin
         imm_n = imm_u_type;
         ctrl_sig_n.alu_src = 1'b1;
-        ctrl_sig_n.alu_op = 8'hFF; // Pass-through 
+        ctrl_sig_n.alu_op = 5'b11111; // Pass-through 
         ctrl_sig_n.reg_wb = 1'b1;
         fu_selec_n = FU_ALU;
       end
 
+      // REMINDER: Branch target is calculated externally by imm_b_type + pc or imm_j_type
       // Branches (B-Type)
       OPCODE_BRANCH: begin
         imm_n = imm_b_type;
@@ -283,12 +295,12 @@ module decode import rv32_pkg::*; #(
         ctrl_sig_n.alu_src = 1'b0;
         fu_selec_n = FU_BRANCH;
         unique case (funct3)
-          3'b000: ctrl_sig_n.alu_op = 8'h20; // BEQ
-          3'b001: ctrl_sig_n.alu_op = 8'h21; // BNE
-          3'b100: ctrl_sig_n.alu_op = 8'h22; // BLT
-          3'b101: ctrl_sig_n.alu_op = 8'h23; // BGE
-          3'b110: ctrl_sig_n.alu_op = 8'h24; // BLTU
-          3'b111: ctrl_sig_n.alu_op = 8'h25; // BGEU
+          3'b000: ctrl_sig_n.alu_op = 5'b00001; // BEQ (rs1 == rs2)
+          3'b001: ctrl_sig_n.alu_op = 5'b00010; // BNE (rs1 != rs2)
+          3'b100: ctrl_sig_n.alu_op = 5'b00011; // BLT (rs1 < rs2, signd)
+          3'b101: ctrl_sig_n.alu_op = 5'b00100; // BGE (rs1 >= rs2, signed)
+          3'b110: ctrl_sig_n.alu_op = 5'b00101; // BLTU (rs1 < rs2, unsigned)
+          3'b111: ctrl_sig_n.alu_op = 5'b00110; // BGEU (rs1 >= rs2, unsigned)
           default: illegal_instr = 1'b1;
         endcase
       end
@@ -307,15 +319,29 @@ module decode import rv32_pkg::*; #(
         ctrl_sig_n.jump = 1'b1;
         ctrl_sig_n.reg_wb = 1'b1;
         ctrl_sig_n.alu_src = 1'b1;
-        ctrl_sig_n.alu_op = 8'h00; // ADD
+        ctrl_sig_n.alu_op = 5'b00111; // ADD
         fu_selec_n = FU_ALU; 
       end
 
+      // INCOMPLETE:
       // SYSTEM (I-Type)
       OPCODE_SYSTEM: begin
         ctrl_sig_n.csr = 1'b1;
         fu_selec_n = FU_CSR;
       end
+
+      // INCOMPLETE:
+      // Fence (I-Type)
+      OPCODE_MISC_MEM: begin
+        ctrl_s
+        unique case (funct3)
+          3'b000: begin // FENCE
+          end
+          3'b001: begin // FENCE.I
+          end 
+          default: illegal_instr = 1'b1;
+        endcase
+      end 
 
       // AMO (R-Type)
       OPCODE_AMO: begin
@@ -333,11 +359,13 @@ module decode import rv32_pkg::*; #(
                 5'b00011: amo_op_n = AMO_SC;
                 5'b00001: amo_op_n = AMO_SWAP;
                 5'b00000: amo_op_n = AMO_ADD;
+                5'b00100: amo_op_n = AMO_XOR;
                 5'b01100: amo_op_n = AMO_AND;
                 5'b01010: amo_op_n = AMO_OR;
-                5'b00100: amo_op_n = AMO_XOR;
-                5'b10100: amo_op_n = AMO_MAX;
                 5'b10000: amo_op_n = AMO_MIN;
+                5'b10100: amo_op_n = AMO_MAX;   
+                5'b11000: amo_op_n = AMO_MINU;
+                5'b11100: amo_op_n = AMO_MAXU;             
                 default: amo_op_n = AMO_NONE;
               endcase
             end
@@ -376,16 +404,16 @@ module decode import rv32_pkg::*; #(
       rf_b_o = rf_b_i;
 
       // rs1:
-      if (reg_wb_ex_i && (rd_ex_i != 5'd0) && (rd_ex_i == rs1)) begin // Check EX stage
+      if (reg_wb_ex_i && (rd_ex_i == rs1)) begin // Check EX stage
         rf_a_o = forward_ex_i;
-      end else if (reg_wb_mm_i && (rd_mm_i != 5'd0) && (rd_mm_i == rs1)) begin  // Check MM stage
+      end else if (reg_wb_mm_i && (rd_mm_i == rs1)) begin  // Check MM stage
         rf_a_o = forward_mm_i;
       end
 
       // rs2:
-      if (reg_wb_ex_i && (rd_ex_i != 5'd0) && (rd_ex_i == rs2)) begin // Check EX stage
+      if (reg_wb_ex_i && (rd_ex_i == rs2)) begin // Check EX stage
         rf_b_o = forward_ex_i;
-      end else if (reg_wb_mm_i && (rd_mm_i != 5'd0) && (rd_mm_i == rs2)) begin  // Check MM stage
+      end else if (reg_wb_mm_i && (rd_mm_i == rs2)) begin  // Check MM stage
         rf_b_o = forward_mm_i; 
       end
     end
