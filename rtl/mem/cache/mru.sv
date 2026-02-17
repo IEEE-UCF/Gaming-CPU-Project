@@ -1,7 +1,8 @@
 // Most Recently Used (Assuming two-way cache)
 
 module mru #(
-    parameter int SETS = 128
+    parameter int SETS = 128,
+    parameter int WAYS = 2
 ) (
     input logic clk_i,
     input logic rst_ni,
