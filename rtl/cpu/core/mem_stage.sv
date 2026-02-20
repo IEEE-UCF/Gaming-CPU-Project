@@ -1,26 +1,27 @@
 `timescale 1ns / 1ps
 
+import rv32_pkg::*; #(
+    parameter int unsigned DATA_WIDTH = 32
+) 
+
 module mem_stage #(
     parameter HAS_A = 1,
     parameter ADDR_WIDTH = 32,
     parameter DATA_WIDTH = 32,
-)
-import rv32_pkg::*; #(
-    parameter int unsigned DATA_W = 32
-) (
+
     // Clock and Reset
     input logic clk_i,
     input logic rst_ni,
 
     // Load/Store Control
-    input logic ls_ctrl_load_i
+    input logic ls_ctrl_load_i,
     input logic ls_ctrl_store_i,
     input logic ls_ctrl_size_i,
     input logic ls_ctrl_unsigned_i,
     input logic ls_ctrl_write_en_i,
 
     // Execution Stage Results
-    input logic [DATA_W-31:0] ex_data_i,
+    input logic [DATA_WIDTH-31:0] ex_data_i,
 
     // Data Cache Interface
     output logic dc_req_o,
@@ -33,17 +34,17 @@ import rv32_pkg::*; #(
     input logic mmu_access_fault_i,
 
     // Data to Writeback Stage 
-    output logic [DATA_W-1:0] wb_data_o
+    output logic [DATA_WIDTH-1:0] wb_data_o
 
     // Memory Operation
-    output logic mem_stall_o,
-    output logic mem_exception_o,
-    output logic [1:0] mem_exception_type_o,
+    output logic mem_stall_o;
+    output logic mem_exception_o;
+    output logic [1:0] mem_exception_type_o;
 
     
     // Rest of Signals
-    logic [DATA_W-1:0] load_data;
-    logic {DATA_W-1:0} store_data;
+    logic [DATA_WIDTH-1:0] load_data;
+    logic [DATA_WIDTH-1:0] store_data;
     logic mem_op_valid;
     logic mem_access_valid;
     logic cache_miss;
@@ -65,9 +66,9 @@ import rv32_pkg::*; #(
     // Registers
     //
 
-    logic [DATA_W-1:0] address_reg;
-    logic [DATA_W-1:0] store_data_reg;
-    logic {1:0} size_reg;
+    logic [DATA_WIDTH-1:0] address_reg;
+    logic [DATA_WIDTH-1:0] store_data_reg;
+    logic [1:0] size_reg;
     logic sign_reg;
     logic is_load_reg;
     logic is_store_reg;
@@ -76,7 +77,7 @@ import rv32_pkg::*; #(
     // Reset/Initialization
     //
 
-    always_ff @(posedge clk_i or negedge rst_ni) begin
+    always_ff @(posedge clk_i or negedge rst_ni) begin // On reset, initialize all registers and signals
         if (!rst_ni) begin
             current_state <= MEM_IDLE;
             address_reg <= '0;
@@ -88,8 +89,7 @@ import rv32_pkg::*; #(
         end else begin
             current_state <= next_state;
 
-            // Register Inputs at Start
-            if (mem_state == MEM_IDLE && (ls_ctrl_load_i || ls_ctrl_store_i)) begin
+            if (mem_state == MEM_IDLE && (ls_ctrl_load_i || ls_ctrl_store_i)) begin // Register Inputs at Start
                 address_reg <= ex_res_i;
                 store_data_reg <= ex_res_i; // Assuming data is in ex_res_i for stores
                 size_reg <= ls_ctrl_size_i;
@@ -98,12 +98,11 @@ import rv32_pkg::*; #(
                 is_store_reg <= ls_ctrl_store_i;
             end
 
-            // Update Writeback Data on Completion
-            if (mem_state == MEM_COMPLETE && !mem_exception_o) begin
+            if (mem_state == MEM_COMPLETE && !mem_exception_o) begin // Update writeback data upon completion
                 if (is_load_reg && dc_rsp_i) begin
                     wb_data_o <= load_data;
                 end else begin
-                    wb_data_o <= address_reg; // For stores and non-memory ops
+                    wb_data_o <= address_reg; // For stores and non-memory operations
                 end
             end
         end
@@ -112,11 +111,11 @@ import rv32_pkg::*; #(
     //
     // Memory Allignment 
     //
-        always_comb begin
+        always_comb begin // Default values
         misalignment_error = 1'b0;
         aligned_addr = address_reg;
         
-        if (mem_access_valid) begin
+        if (mem_access_valid) begin // Check alignment only if valid memory access
             case (size_reg)
                 2'b00: begin 
                     misalignment_error = 1'b0;
@@ -133,7 +132,7 @@ import rv32_pkg::*; #(
                     end
                     aligned_addr = {address_reg[31:2], 2'b00};
                 end
-                default: begin
+                default: begin // If invalid size, treat as misaligned
                     misalignment_error = 1'b0;
                 end
             endcase
@@ -145,14 +144,14 @@ import rv32_pkg::*; #(
     // Atomic Pass-Through
     //
         generate
-        if (HAS_A) begin : atomic_support
+        if (HAS_A) begin : atomic_support // If atomic instructions supported, and if the current memory access is atomic, sets request signals accordingly
             assign atomic_req_o = mem_access_valid && 
                                  ((ls_ctrl_load_i && ls_ctrl_store_i) || 
                                   (|ls_ctrl_size_i));
             
             assign dc_req_o = mem_access_valid && !atomic_req_o && !cache_miss;
             
-        end else begin : no_atomic_support
+        end else begin : no_atomic_support // If atomic NOT supported, simply pass through memory request signals without atomic check
             assign atomic_req_o = 1'b0;
             assign dc_req_o = mem_access_valid && !cache_miss;
         end
@@ -174,6 +173,8 @@ import rv32_pkg::*; #(
     // Cache Miss Handling
     //
 
-)   
+    input logic state
+
+)
     
 endmodule : mem_stage
