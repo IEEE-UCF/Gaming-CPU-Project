@@ -1,5 +1,5 @@
 //
-//
+//    Work in progress, if there are any updates plz contribute :D -Arnold
 //
 
 package interconnect_pkg;
@@ -8,3 +8,4 @@ package interconnect_pkg;
   parameter int unsigned DATA_WIDTH = 64;
   
 endpackage
+
