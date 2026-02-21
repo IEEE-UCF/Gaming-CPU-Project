@@ -40,9 +40,6 @@ typedef enum logic [3:0] {
 
 // Decode Module
 module decode import rv32_pkg::*; #(
-  parameter int unsigned HAS_M = 1, // RV32M  
-  parameter int unsigned HAS_A = 1, // RV32A 
-  parameter int unsigned DATA_W = 32;
 ) (
 
   // Clock 
@@ -422,7 +419,6 @@ endmodule
 
 // Register File
 module register_file import rv32_pkg::*; #(
-    parameter int unsigned DATA_W = 32;
 ) (
 
   // Clock 
@@ -443,7 +439,7 @@ module register_file import rv32_pkg::*; #(
 
   logic [DATA_W-1:0] rf_mem [0:31];
   
-  always_ff @(posedge clk_i) begin
+  always_ff @(negedge clk_i) begin
     if (!rst_ni) begin  // Resets the registers to 0 (Initialization)
       integer i;
       for (i = 0; i < 32; i = i + 1) rf_mem[i] <= '0;
