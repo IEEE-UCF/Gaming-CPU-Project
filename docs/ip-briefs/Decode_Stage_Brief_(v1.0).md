@@ -22,9 +22,6 @@
 #### **Interfaces (Ports)**
 - Any external input or output signal that will be used by the ID stage
 - Subject to change
-- TODO: Check need for and usage of `control_hazard_o` signal
-- TODO: Move `rv32_ctrl_s` type of `ctrl_o` signal to `rv32_pkg`
-	- TODO: Distinguish write-enables as made available by EX or MM for forwarding logic (i.e. `reg_wb` -> `reg_ex_we` and `reg_mm_we`)
 
 | Signal Name              | Direction | Width | Description                              |
 | ------------------------ | --------- | ----- | -----------------------------------------|
