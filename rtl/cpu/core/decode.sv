@@ -1,15 +1,4 @@
-// Control Signals
-typedef struct packed { 
-  logic alu_src; // ALU source select (0 = rs2, 1 = imm)
-  logic [7:0] alu_op; // ALU operation code 
-  logic mem_read; // Memory read enable (to load)
-  logic mem_write;  // Memory write enable (to store)
-  logic mem_size; // Memory access size (00 = byte, 01 = halfword, 10 = word)
-  logic branch; // Branch instruction
-  logic jump; // Jump instruction
-  logic csr;  // CSR instruction
-  logic reg_wb;  // Register file writeback enable 
-} rv32_ctrl_s;
+import rv32_pkg::*;
 
 // Functional Unit Selection
 typedef enum logic [2:0] {
@@ -39,11 +28,7 @@ typedef enum logic [3:0] {
 } amo_op_e;
 
 // Decode Module
-module decode import rv32_pkg::*; #(
-  parameter int unsigned HAS_M = 1, // RV32M  
-  parameter int unsigned HAS_A = 1, // RV32A 
-  parameter int unsigned DATA_W = 32;
-) (
+module decode (
 
   // Clock 
   input logic clk_i,
@@ -56,8 +41,7 @@ module decode import rv32_pkg::*; #(
   output logic [DATA_W-1:0] rf_b_o,
 
   // Hazard Control
-  input logic hazard_stall_i,
-  output logic [1:0] control_hazard_o,
+  output logic control_hazard_o,
 
   // Execute Inputs (includes rf_a_o and rf_b_o)
   output rv32_ctrl_s ctrl_o, 
@@ -100,6 +84,7 @@ module decode import rv32_pkg::*; #(
   assign rs2    = instr_i[24:20];
   assign funct7 = instr_i[31:25];
   assign shamt = instr_i [24:20];
+  // Not implemented yet
   assign pred = instr_i[27:24]; // Input/Output/Read/Write before fence
   assign succ = instr_i[23:20]; // Input/Output/Read/Write after fence
 
@@ -143,7 +128,7 @@ module decode import rv32_pkg::*; #(
   fu_selec_e fu_selec_n;  // Next functional unit select
   amo_op_e amo_op_n;  // Next AMO operation
   logic amo_aq_n; // Next AMO acquire 
-  logic amo_rl_n;
+  logic amo_rl_n; // Next AMO release
   logic illegal_instr;
 
 
@@ -392,38 +377,20 @@ module decode import rv32_pkg::*; #(
   assign amo_aq_o = amo_aq_n;
   assign amo_rl_o = amo_rl_n;
 
-  // Hazard Control Output
-  assign control_hazard_o = 
-    illegal_instr ? 2'b11 :   // flush
-    hazard_stall_i ? 2'b01 :  // stall
-    2'b00;  // normal
+  // Illegal Instruction Output
+  assign control_hazard_o = illegal_instr;
 
-    // Forwarding Logic
-    always_comb begin
-      rf_a_o = rf_a_i;
-      rf_b_o = rf_b_i;
+  assign rf_a_o = rf_a_i;
+  assign rf_b_o = rf_b_i;
 
-      // rs1:
-      if (reg_wb_ex_i && (rd_ex_i == rs1)) begin // Check EX stage
-        rf_a_o = forward_ex_i;
-      end else if (reg_wb_mm_i && (rd_mm_i == rs1)) begin  // Check MM stage
-        rf_a_o = forward_mm_i;
-      end
-
-      // rs2:
-      if (reg_wb_ex_i && (rd_ex_i == rs2)) begin // Check EX stage
-        rf_b_o = forward_ex_i;
-      end else if (reg_wb_mm_i && (rd_mm_i == rs2)) begin  // Check MM stage
-        rf_b_o = forward_mm_i; 
-      end
-    end
+    // NOTES:
+    // ALU src rs2/imm value mux (in hazard_unit)
+    // control signals to ex
     
 endmodule
 
 // Register File
-module register_file import rv32_pkg::*; #(
-    parameter int unsigned DATA_W = 32;
-) (
+module register_file (
 
   // Clock 
   input logic clk_i,
@@ -443,7 +410,7 @@ module register_file import rv32_pkg::*; #(
 
   logic [DATA_W-1:0] rf_mem [0:31];
   
-  always_ff @(posedge clk_i) begin
+  always_ff @(negedge clk_i) begin
     if (!rst_ni) begin  // Resets the registers to 0 (Initialization)
       integer i;
       for (i = 0; i < 32; i = i + 1) rf_mem[i] <= '0;
