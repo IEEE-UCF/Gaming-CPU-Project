@@ -1,0 +1,34 @@
+
+/***FIFO MANAGEMENT**/
+// Internal FIFO memory, pointers, and counter
+localparam ADDR_WIDTH = $clog2(FIFO_DEPTH);
+reg [7:0] fifo_mem [0:FIFO_DEPTH-1];
+reg [ADDR_WIDTH-1:0] waddr_ptr;
+reg [ADDR_WIDTH-1:0] raddr_ptr;
+reg [ADDR_WIDTH:0] count;
+wire fifo_full  = (count == FIFO_DEPTH);
+wire fifo_empty = (count == 0);
+
+// FIFO Push (write) and Pop (read) logic
+always @(posedge clk or posedge rst) begin
+    if (rst) begin
+        waddr_ptr <= 0;
+        raddr_ptr <= 0;
+        count <= 0;
+    end
+    else begin
+        // Push data to FIFO (CPU write)
+        if (wvalid && awvalid && !fifo_full) begin
+            fifo_mem[waddr_ptr] <= wdata;   // Write CPU data into FIFO
+            waddr_ptr <= waddr_ptr + 1;     // Increment write pointer
+            count <= count + 1;             // Increment FIFO count
+        end
+
+        // Pop data from FIFO (CPU read)
+        if (rready && arvalid && !fifo_empty) begin
+            RBR <= fifo_mem[raddr_ptr];     // Load data to read register
+            raddr_ptr <= raddr_ptr + 1;     // Increment read pointer
+            count <= count - 1;             // Decrement FIFO count
+        end
+    end
+end
