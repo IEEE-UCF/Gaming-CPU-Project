@@ -1,10 +1,15 @@
 `timescale 1ns / 1ps
 
+import rv32_pkg::*;
+
+typedef enum {IDLE,STALL} state_t;
+
+typedef enum {GREATER_EQUAL_THAN_ZERO,LESS_THAN_ZERO} Test_remainder_flag_t;
+
 // Restoring division, divisor initially left-shifted by 32, quotient built MSB→LSB, divisor shifted right each iteration."
 
-
 module division
-import rv32_pkg::*;
+
 (
     input logic clk, 
     input logic rst,
@@ -25,7 +30,9 @@ import rv32_pkg::*;
 
     
     
-    enum {IDLE,STALL} current_state, next_state; // Division FSM states 0 or 1
+    state_t current_state, next_state; // Division FSM states 0 or 1
+    
+    Test_remainder_flag_t Test_remainder_flag; // Test remainder 0 or 1 state
  
  
  always_ff @(posedge clk) begin // Division Stall FSM
@@ -48,11 +55,7 @@ import rv32_pkg::*;
  
  end
  
- 
- 
- 
-   enum {GREATER_EQUAL_THAN_ZERO,LESS_THAN_ZERO} Test_remainder_flag; // Flags used for test comparison case
-  
+
    // Test combinational logic interface  that will be used for testing.
    logic signed [63:0] remainder_test_comparison; 
    logic [63:0] remainder_test_mux;
@@ -154,7 +157,8 @@ import rv32_pkg::*;
         end
         
        
-    
+                        
+                  
     
     
     end
