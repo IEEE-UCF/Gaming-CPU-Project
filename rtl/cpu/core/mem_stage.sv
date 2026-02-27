@@ -1,13 +1,8 @@
 `timescale 1ns / 1ps
 
-import rv32_pkg::*; #(
-    parameter int unsigned DATA_WIDTH = 32
-) 
+import rv32_pkg::*; 
 
 module mem_stage #(
-    parameter HAS_A = 1,
-    parameter ADDR_WIDTH = 32,
-    parameter DATA_WIDTH = 32,
 
     // Clock and Reset
     input logic clk_i,
@@ -34,12 +29,13 @@ module mem_stage #(
     input logic mmu_access_fault_i,
 
     // Data to Writeback Stage 
-    output logic [DATA_WIDTH-1:0] wb_data_o
+    output logic [DATA_WIDTH-1:0] wb_data_o,
 
     // Memory Operation
-    output logic mem_stall_o;
-    output logic mem_exception_o;
-    output logic [1:0] mem_exception_type_o;
+    output logic mem_stall_o,
+    output logic mem_exception_o,
+    output logic [1:0] mem_exception_type_o,
+);
 
     
     // Rest of Signals
@@ -111,7 +107,8 @@ module mem_stage #(
     //
     // Memory Allignment 
     //
-        always_comb begin // Default values
+
+    always_comb begin // Default values
         misalignment_error = 1'b0;
         aligned_addr = address_reg;
         
@@ -139,11 +136,11 @@ module mem_stage #(
         end
     end
 
-
     //
     // Atomic Pass-Through
     //
-        generate
+
+    generate
         if (HAS_A) begin : atomic_support // If atomic instructions supported, and if the current memory access is atomic, sets request signals accordingly
             assign atomic_req_o = mem_access_valid && 
                                  ((ls_ctrl_load_i && ls_ctrl_store_i) || 
@@ -161,13 +158,101 @@ module mem_stage #(
     // Store Byte-Enable Generation
     //
 
+    always_comb begin
+        byte_enable = 4'b0000; // Default to no bytes enabled
+
+        if (store_operation && ls_ctrl_write_en_i) begin
+            case (size_reg)
+                2'b00: begin // Byte store
+                    unique case (address_reg[1:0]) // Use address offset to determine which bytes to enable
+                        2'b00: byte_enable = 4'b0001 << address_reg[1:0]; 
+                        2'b01: byte_enable = 4'b0011 << address_reg[1:0]; 
+                        2'b10: byte_enable = 4'b1111; 
+                        default: byte_enable = 4'b0000; // Invalid size, no bytes enabled
+                    endcase
+                end 
+                    2'b01: begin // Half-word store
+                        unique case (address_reg[1]) // Use bit 1 of address to determine which half-word to enable
+                            1'b0: byte_enable = 4'b0011; 
+                            1'b1: byte_enable = 4'b1100; 
+                            default: byte_enable = 4'b0000; // Invalid size, no bytes enabled
+                        endcase
+                    end
+                    2'b10: begin; // Word store
+                        byte_enable = 4'b1111; 
+                    end
+                endcase
+            end
+        end
+    
     //
     // Load Bit-Extension
     //
 
+    always_comb begin
+        load_data = dc_rsp_i; // Default to raw data from cache
+
+        if (load_operation && dc_rsp_i) begin
+            logic [DATA_WIDTH-1:0] raw_data;
+
+            case (size_reg)
+                2'b00: begin // Byte load
+                    unique case (address_reg[1:0]) // Use address offset to determine which byte to extract
+                        2'b00: raw_data = {24'b0, dc_rsp_i[7:0]}; 
+                        2'b01: raw_data = {24'b0, dc_rsp_i[15:8]}; 
+                        2'b10: raw_data = {24'b0, dc_rsp_i[23:16]}; 
+                        2'b11: raw_data = {24'b0, dc_rsp_i[31:24]}; 
+                        default: raw_data = 32'b0; // Invalid size, return zero
+                    endcase
+
+                    if (sign_reg) begin // If signed load, perform sign-extension
+                        load_data = {{24{raw_data[7]}}, raw_data[7:0]};
+                    end else begin // If unsigned load, zero-extend
+                        load_data = {24'b0, raw_data[7:0]};
+                    end
+                end
+                2'b01: begin // Half-word load
+                    unique case (address_reg[1]) // Use bit 1 of address to determine which half-word to extract
+                        2'b0: raw_data = {16'b0, dc_rsp_i[15:0]}; 
+                        2'b1: raw_data = {16'b0, dc_rsp_i[31:16]}; 
+                        default: raw_data = 32'b0; // Invalid size, return zero
+                    endcase
+
+                    if (sign_reg) begin // If signed load, perform sign-extension
+                        load_data = {{16{raw_data[15]}}, raw_data[15:0]};
+                    end else begin // If unsigned load, zero-extend
+                        load_data = {16'b0, raw_data[15:0]};
+                    end
+                end
+                2'b10: begin // Word load, no extension needed
+                    load_data = dc_rsp_i;
+                end
+                `default: begin
+                    load_data: '0;
+                end
+            endcase
+        end
+    end
+
     //
     // Error Handling
     //
+
+        always_comb begin
+            mem_exception_o = 1'b0; // Default to no exception
+            mem_exception_type_o = 2'b00;
+
+            if (misalignment_error) begin
+                mem_exception_o = 1'b1;
+                mem_exception_type_o = 2'b01; // Misalignment exception code
+            end else if (mmu_page_fault_i) begin
+                mem_exception_o = 1'b1;
+                mem_exception_type_o = 2'b10; // Page fault exception code
+            end else if (mmu_access_fault_i) begin
+                mem_exception_o = 1'b1;
+                mem_exception_type_o = 2'b11; // Access fault exception code
+            end
+        end
 
     //
     // Cache Miss Handling
@@ -175,6 +260,6 @@ module mem_stage #(
 
     input logic state
 
-)
+
     
 endmodule : mem_stage

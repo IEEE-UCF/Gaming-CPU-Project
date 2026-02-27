@@ -1,13 +1,8 @@
 '`timescale 1ns / 1ps
 
-import rv32_pkg::*;#(
-    parameter int unsigned DATA_W = 32
-)
+import rv32_pkg::*;
 
-module wb_stage #(
-    parameter RF_ADDR_WIDTH = 5,
-    parameter DATA_WIDTH = 32,
-) (
+module wb_stage (
 
     // Clock and Reset
     input logic clk_i,
@@ -17,7 +12,7 @@ module wb_stage #(
     input logic [RF_ADDR_WIDTH-1:0] rd_addr_i,
     input logic [DATA_W-1:0] rd_data_i,
     input logic rd_valid_i,
-    input logic rd_exeption_i,
+    input logic rd_exception_i,
 
     // Outputs to Register File
     output logic rd_we_o,
@@ -124,6 +119,7 @@ module wb_stage #(
         endcase
     end
 
+    
     // 
     // Register File and CSR Writeback
     //
@@ -134,7 +130,7 @@ module wb_stage #(
     always_comb begin // Default outputs
         rd_we_o = 1'b0;  
         rd_waddr_o = '0; 
-        rd_wdata_o = '0; 
+        rd_wdata_o = '0;
 
 
         if(current_state == WB_COMMIT && wb_valid_reg) begin // Commits to register file only if valid
@@ -164,6 +160,7 @@ module wb_stage #(
             csr_we_o <= 1'b1; 
             csr_addr_o <= CSR_MCAUSE; 
             csr_wdata_o <= wb_exception_reg; 
+
         end else if (current_state == WB_COMMIT && wb_exception_pending) begin // If committing an instruction but exception pending, commit exception
             csr_we_o <= 1'b1; 
             csr_addr_o <= CSR_MCAUSE; 
@@ -185,10 +182,13 @@ module wb_stage #(
         if (current_state == WB_EXCEPTION) begin // If we're in the exception state, signal a trap and flush the pipeline
             trap_o = 1'b1; 
             pipeline_flush_o = 1'b1; 
+            // Change to one If Statement
         end else if (current_state == WB_COMMIT && wb_exception_pending) begin // If exception pending, signal a trap and flush on commit
             trap_o = 1'b1; 
             pipeline_flush_o = 1'b1; 
-        end else if (current_state == WB_CSR_ACCESS) begin // If accessing a CSR, stall until it's complete
+
+        // Add Exception Types for more precise control over pipeline behavior (e.g., different flush behavior for different exceptions)
+        end else if (current_state == WB_CSR_ACCESS) begin // If accessing CSR, stall until complete
             wb_stall_o = 1'b1; 
         end
     end
