@@ -1,4 +1,3 @@
-`timescale 1ns / 1ps
 
 import rv32_pkg::*;
 
@@ -11,8 +10,8 @@ typedef enum {GREATER_EQUAL_THAN_ZERO,LESS_THAN_ZERO} Test_remainder_flag_t;
 module division
 
 (
-    input logic clk, 
-    input logic rst,
+    input logic clk_i, 
+    input logic rst_ni,
     input logic Division_START, // Start Division
     input logic [31:0] dividend, // numerator
     input logic [31:0] divisor, // denominator
@@ -35,8 +34,8 @@ module division
     Test_remainder_flag_t Test_remainder_flag; // Test remainder 0 or 1 state
  
  
- always_ff @(posedge clk) begin // Division Stall FSM
-    if(rst==1'b0) begin // Active low reset
+ always_ff @(posedge clk_i) begin // Division Stall FSM
+    if(rst_ni == 1'b0) begin // Active low reset
         current_state <= IDLE;
     end else begin
         current_state <= next_state;  
@@ -97,8 +96,8 @@ module division
     end
  
     
-    always_ff @(posedge clk) begin
-        if(rst == 1'b0) begin
+    always_ff @(posedge clk_i) begin
+        if(rst_ni == 1'b0) begin
             dividend_reg <= 32'd0;
             divisor_reg <= 64'd0;
             remainder_reg <= 64'd0;
@@ -143,7 +142,7 @@ module division
          
     end
     
-    always_ff @(posedge clk) begin
+    always_ff @(posedge clk_i) begin
     
         if(counter == 32'd33) begin
             $display("Quotient: %0d",quotient);

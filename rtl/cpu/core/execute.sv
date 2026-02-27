@@ -1,4 +1,4 @@
-`timescale 1ns / 1ps
+
 
 /* Assumptions:
 
@@ -15,8 +15,8 @@ import rv32_pkg::*;
 module execute
 
 (
- input  logic                           clk, // Main clk input
- input  logic                           rst, // Active-low asynchronous reset
+ input  logic                           clk_i, // Main clk input
+ input  logic                           rst_ni, // Active-low asynchronous reset
  input  logic                           ctrl_i, // Control signals to execute
  input  logic  [DATA_WIDTH-1:0]         op_a_i, // Register A operand (data) from RF
  input  logic  [DATA_WIDTH-1:0]         op_b_i, // Register B operand (data) or sign extended immediate 32'b values
@@ -49,8 +49,8 @@ module execute
     logic [DATA_WIDTH-1:0] ALU_OUTPUT_COMB;
 
     
-    always_ff @(posedge clk) begin
-        if(rst == 1'b0) 
+    always_ff @(posedge rst_ni) begin
+        if(rst_ni == 1'b0) 
             alu_res_o <= 32'd0;
         else begin
             alu_res_o <= ALU_OUTPUT_COMB;           
@@ -70,8 +70,8 @@ module execute
     logic signed_overflow;
     
     division Unit(
-    .clk(clk),
-    .rst(rst),
+    .clk_i(clk_i),
+    .rst_ni(rst_ni),
     .Division_START(Division_START),
     .dividend(dividend),
     .divisor(divisor),
