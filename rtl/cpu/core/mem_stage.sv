@@ -39,7 +39,7 @@ import rv32_pkg::*; #(
     output logic mem_stall_o,
     output logic mem_exception_o,
     output logic [1:0] mem_exception_type_o,
-
+    );
     
     // Rest of Signals
     logic [DATA_W-1:0] load_data;
