@@ -64,10 +64,6 @@ output wire irq_o
 
 /***************************TRANSMIT tx_o******************************/
 // FIFO -> shift register -> serial output
-    
-// logic [7:0] tx_shift_reg; Holds the byte to transmit
-// logic tx_fifo_rreq; Request to read/pop FIFO
-// logic tx_bit_clk; Baud rate clock (1x)  
 
 module uart_tx (
     input  logic        clk,
@@ -92,30 +88,42 @@ module uart_tx (
     logic [3:0] tx_bit_counter; 
     
     //2. Baud Rate Generator (creates a tick when a new bit needs to be sent)
-    wire [15:0] baud_divisor = {DLM, DLL}; //16 bits is used for RX oversampling.
-    localparam CLK_PER_BIT = 16; 
-    wire [31:0] rate_limit = baud_divisor * CLK_PER_BIT;
-    reg [31:0] clk_counter;
+    wire [15:0] baud_divisor = {DLM, DLL}; 
+    wire [31:0] rate_limit   = baud_divisor;   //TX does NOT oversample
+    reg  [31:0] clk_counter;
     logic tx_bit_clk_en;
 
     always_ff @(posedge clk or posedge rst) begin
         if (rst) begin
-            clk_counter <= 0;
+            clk_counter   <= 0;
             tx_bit_clk_en <= 1'b0;
-        end else begin
+        end 
+        else begin
             if (clk_counter >= rate_limit - 1) begin
-                clk_counter <= 0;
-                tx_bit_clk_en <= 1'b1;
-            end else begin
-                clk_counter <= clk_counter + 1;
+                clk_counter   <= 0;
+                tx_bit_clk_en <= 1'b1;   //1-cycle pulse
+            end 
+            else begin
+                clk_counter   <= clk_counter + 1;
                 tx_bit_clk_en <= 1'b0;
             end
         end
     end
 
-    //3. FIFO Handshake (stores for uart_tx)
-    //Read enable only for one clock cycle when we move out of IDLE.
-    assign fifo_rd_en = (tx_state_c == IDLE && !fifo_empty && tx_bit_clk_en);
+    //3. FIFO Handshake (registered 1-cycle pulse)
+    //Read enable only when transitioning from IDLE -> START_BIT
+    always_ff @(posedge clk or posedge rst) begin
+        if (rst)
+            fifo_rd_en <= 1'b0;
+        else begin
+            fifo_rd_en <= 1'b0; //default
+
+            if (tx_bit_clk_en &&
+                tx_state_c == IDLE &&
+                !fifo_empty)
+                fifo_rd_en <= 1'b1;
+        end
+    end
 
     //4. Sequential Engine (always_ff block builds memory)
     always_ff @(posedge clk or posedge rst) begin
@@ -123,21 +131,34 @@ module uart_tx (
             tx_state_c     <= IDLE;
             tx_shift_reg   <= 8'b0;
             tx_bit_counter <= 4'b0;
-        end else if (tx_bit_clk_en) begin
+        end 
+        else if (tx_bit_clk_en) begin
+
             tx_state_c <= tx_state_n; //Move to next state every bit-period
 
             case (tx_state_c)
+
                 IDLE: begin
                     tx_bit_counter <= 0;
-                    if (!fifo_empty) begin
-                        tx_shift_reg <= fifo_data_out; //Captures the data from FIFO
-                    end
+
+                    //Load shift register ONLY when starting transmission
+                    if (!fifo_empty)
+                        tx_shift_reg <= fifo_data_out;
                 end
-                DATA_BITS: begin  //This moves the next bit into index [0] every bit-period
-                    tx_shift_reg   <= {1'b0, tx_shift_reg[7:1]}; 
+
+                DATA_BITS: begin
+                    //Shift right each bit-period (LSB first transmission)
+                    tx_shift_reg   <= {1'b0, tx_shift_reg[7:1]};
                     tx_bit_counter <= tx_bit_counter + 1;
                 end
-                default: tx_bit_counter <= 0;
+
+                STOP_BITS: begin
+                    tx_bit_counter <= 0;
+                end
+
+                default: begin
+                    tx_bit_counter <= 0;
+                end
             endcase
         end
     end
@@ -145,19 +166,21 @@ module uart_tx (
     //5. Combinational Logic (if then statements for decision making)
     always_comb begin
         tx_state_n = tx_state_c;
-        case (tx_state_c)
-            IDLE:      if (!fifo_empty) tx_state_n = START_BIT;
-            START_BIT: tx_state_n = DATA_BITS;
-            DATA_BITS: if (tx_bit_counter == 4'd7) tx_state_n = STOP_BITS;
-            STOP_BITS: tx_state_n = IDLE;
-            default:   tx_state_n = IDLE;
-        endcase
+
+        if (tx_bit_clk_en) begin
+            case (tx_state_c)
+                IDLE:      if (!fifo_empty) tx_state_n = START_BIT;
+                START_BIT: tx_state_n = DATA_BITS;
+                DATA_BITS: if (tx_bit_counter == 4'd7) tx_state_n = STOP_BITS;
+                STOP_BITS: tx_state_n = IDLE;
+                default:   tx_state_n = IDLE;
+            endcase
+        end
     end
+
     //6. Output Assignment (makes the last decision on what the tx_o is doing based on the state that it's in)
-    assign tx_o = (tx_state_c == DATA_BITS)  ? tx_shift_reg[0] : 
-                  (tx_state_c == START_BIT) ? 1'b0 : 
+    assign tx_o = (tx_state_c == DATA_BITS)  ? tx_shift_reg[0] :
+                  (tx_state_c == START_BIT)  ? 1'b0 :
                   1'b1; //Defaults to High (Idle/Stop)
-
+    
 endmodule
-
-
