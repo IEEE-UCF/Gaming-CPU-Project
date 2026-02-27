@@ -8,13 +8,12 @@
 4) unsigned instructions still get signed extended and instructions like SLTU will compare raw bit pattern, so SLTU -1 > 32 is TRUE for example, and not interpret the sign bit unlike SLT which is signed
 5) divide (div), divide unsigned (divu), remainder (rem), and remainder unsigned (remu), see pg 390
 6) multiply (mul), multiply high(mulh), multiply high unsigned(mulhu) multiply high signed-unsigned(mulhsu) are supported 384
-
-
-
 */
 
-module execute
 import rv32_pkg::*;
+
+module execute
+
 (
  input  logic                           clk, // Main clk input
  input  logic                           rst, // Active-low asynchronous reset
@@ -24,7 +23,7 @@ import rv32_pkg::*;
  input  logic  [4:0]                    ALU_OP,
  output logic  [DATA_WIDTH-1:0]         alu_res_o, // ALU result from procesing operands 
  output logic                           branch_taken_o, // Control signal for whether branch should be taken
- output logic                           state // used for stalling the pipeline when division module enters STALL state
+ output logic                           division_state // used for stalling the pipeline when division module enters STALL state
  //output logic  [DATA_WIDTH-1:0]         branch_target_o // Address for branch to redirect program counter deleted because decode will produce branch target in a registered state     
 );
 
@@ -69,7 +68,6 @@ import rv32_pkg::*;
     logic [DATA_WIDTH-1:0] remainder; // mod
     logic sign_bit;
     logic signed_overflow;
-    logic state; // used for stalling the pipeline when division module enters STALL state
     
     division Unit(
     .clk(clk),
@@ -80,7 +78,7 @@ import rv32_pkg::*;
     .remainder(remainder),
     .Division_DONE(Division_DONE),
     .quotient(quotient),
-    .state(state)
+    .state(division_state)
     );
     
     //TODO: for division we have to add the stalling and only latch on to values when they are valid, right now they are always being driven,
