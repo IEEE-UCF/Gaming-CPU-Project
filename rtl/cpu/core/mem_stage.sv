@@ -35,8 +35,12 @@ module mem_stage #(
     output logic mem_stall_o,
     output logic mem_exception_o,
     output logic [1:0] mem_exception_type_o,
+<<<<<<< HEAD
 );
 
+=======
+    );
+>>>>>>> 8c4cc7e7a78e339b7538c4aa64d65b26ffc3b6a8
     
     // Rest of Signals
     logic [DATA_WIDTH-1:0] load_data;
