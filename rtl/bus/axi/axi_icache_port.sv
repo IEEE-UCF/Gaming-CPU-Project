@@ -9,7 +9,6 @@ module axi_icache_port #(
 
 
 )(
-  // TODO: Port set up ports
 
   // global clock and reset signals
   input logic clk_i,
