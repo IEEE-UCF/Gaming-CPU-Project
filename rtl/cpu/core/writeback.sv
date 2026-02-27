@@ -31,6 +31,10 @@ module wb_stage (
     logic wb_addr_reg;
     logic wb_valid_reg;
     logic wb_exception_pending;
+    logic zero_division_exception_i;
+    logic divide_flag_o; 
+
+);
 
     // Unique Case FSM
     typedef enum logic [1:0] {

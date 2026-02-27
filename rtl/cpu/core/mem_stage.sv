@@ -35,13 +35,8 @@ module mem_stage #(
     output logic mem_stall_o,
     output logic mem_exception_o,
     output logic [1:0] mem_exception_type_o,
-<<<<<<< HEAD
 );
 
-=======
-    );
->>>>>>> 8c4cc7e7a78e339b7538c4aa64d65b26ffc3b6a8
-    
     // Rest of Signals
     logic [DATA_WIDTH-1:0] load_data;
     logic [DATA_WIDTH-1:0] store_data;
@@ -242,18 +237,18 @@ module mem_stage #(
     // Error Handling
     //
 
-        always_comb begin
-            mem_exception_o = 1'b0; // Default to no exception
-            mem_exception_type_o = 2'b00;
+    always_comb begin
+        mem_exception_o = 1'b0; // Default to no exception
+        mem_exception_type_o = 2'b00;
 
-            if (misalignment_error) begin
-                mem_exception_o = 1'b1;
-                mem_exception_type_o = 2'b01; // Misalignment exception code
-            end else if (mmu_page_fault_i) begin
-                mem_exception_o = 1'b1;
-                mem_exception_type_o = 2'b10; // Page fault exception code
-            end else if (mmu_access_fault_i) begin
-                mem_exception_o = 1'b1;
+        if (misalignment_error) begin
+            mem_exception_o = 1'b1;
+            mem_exception_type_o = 2'b01; // Misalignment exception code
+        end else if (mmu_page_fault_i) begin
+            mem_exception_o = 1'b1;
+            mem_exception_type_o = 2'b10; // Page fault exception code
+        end else if (mmu_access_fault_i) begin
+            mem_exception_o = 1'b1;
                 mem_exception_type_o = 2'b11; // Access fault exception code
             end
         end
@@ -262,7 +257,15 @@ module mem_stage #(
     // Cache Miss Handling
     //
 
-    input logic state
+    always_ff @(posedge clk_i) begin
+        if (mem_access_valid && !dc_rsp_i) begin
+            cache_miss <= 1'b1; // If valid memory access but no response, Cache miss
+        end else if (dc_rsp_i) begin
+            cache_miss <= 1'b0; // Clear cache miss on response
+        end
+    end
+
+
 
 
     
