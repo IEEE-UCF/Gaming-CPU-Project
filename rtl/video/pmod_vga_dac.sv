@@ -8,7 +8,7 @@ module pmod__DAC(
     input logic hsync_i, vsync_i, 
     output logic [3:0] vga_r_o,
     output logic  [3:0] vga_g_o,
-    output logic [3:0] vga_b,
+    output logic [3:0] vga_b_o,
     output logic hsync_o,
     output logic vsync_o
 );
@@ -32,3 +32,4 @@ always @(posedge clk_i) begin
     end
 end
 endmodule
+
