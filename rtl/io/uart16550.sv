@@ -128,14 +128,14 @@ output wire irq_o
     end
 
 /**************************BAUD RATE CALC******************************/
-    wire [15:0] baud_divisor = {DLM,DLL};   //16-bit divisor from DLM & DLL
-    wire [3:0] psd_value = PSD [3:0];       // the lower 4-bit are used
+    logic [15:0] baud_divisor = {DLM,DLL};   //16-bit divisor from DLM & DLL
+    logic [3:0] psd_value = PSD [3:0];       // the lower 4-bit are used
     
     //clk/(16*(PSD+1)*baud_divisor) -- counter holder for the math 
-    reg [3:0] PSD_counter;         //for PSD+1
-    reg [15:0] divisor_counter;    //divides by divisor
-    reg [3:0] multi_by_16;         //divides by 16
-    reg baud_tick;                 //final baud pulse
+    logic [3:0] PSD_counter;         //for PSD+1
+    logic [15:0] divisor_counter;    //divides by divisor
+    logic [3:0] multi_by_16;         //divides by 16
+    logic baud_tick;                 //final baud pulse
     
     always_ff @(posedge clk or negedge rst) begin 
         if (!rst) begin //reseting the counter
@@ -236,8 +236,41 @@ output wire irq_o
 /***************************INTERRUPT irq_o****************************/
 // RX/TX interrupts based on IER and FIFO/line status
 
-/***************************FIFO MANAGEMENT****************************/
-// Push/pop data, update pointers and count
+
+/***FIFO MANAGEMENT**/
+// Internal FIFO memory, pointers, and counter
+localparam ADDR_WIDTH = $clog2(FIFO_DEPTH);
+logic [7:0] fifo_mem [0:FIFO_DEPTH-1];
+logic [ADDR_WIDTH-1:0] waddr_ptr;
+logic [ADDR_WIDTH-1:0] raddr_ptr;
+logic [ADDR_WIDTH:0] count;
+logic fifo_full  = (count == FIFO_DEPTH);
+logic fifo_empty = (count == 0);
+
+// FIFO Push (write) and Pop (read) logic
+always_ff @(posedge clk or posedge rst) begin
+    if (rst) begin
+        waddr_ptr <= 0;
+        raddr_ptr <= 0;
+        count <= 0;
+    end
+    else begin
+        // Push data to FIFO (CPU write)
+        if (wvalid && awvalid && !fifo_full) begin
+            fifo_mem[waddr_ptr] <= wdata;   // Write CPU data into FIFO
+            waddr_ptr <= waddr_ptr + 1;     // Increment write pointer
+            count <= count + 1;             // Increment FIFO count
+        end
+
+        // Pop data from FIFO (CPU read)
+        if (rready && arvalid && !fifo_empty) begin
+            RBR <= fifo_mem[raddr_ptr];     // Load data to read register
+            raddr_ptr <= raddr_ptr + 1;     // Increment read pointer
+            count <= count - 1;             // Decrement FIFO count
+        end
+    end
+end
+
 
 /***************************ERROR DETECTION***************************/
 // Parity, framing, overrun errors
