@@ -23,7 +23,7 @@ module execute
  input  logic  [4:0]                    ALU_OP,
  output logic  [DATA_WIDTH-1:0]         alu_res_o, // ALU result from procesing operands 
  output logic                           branch_taken_o, // Control signal for whether branch should be taken
- output logic                           division_state // used for stalling the pipeline when division module enters STALL state
+ output logic                           stall_o // used for stalling the pipeline when division module enters STALL state
  //output logic  [DATA_WIDTH-1:0]         branch_target_o // Address for branch to redirect program counter deleted because decode will produce branch target in a registered state     
 );
 
@@ -49,7 +49,7 @@ module execute
     logic [DATA_WIDTH-1:0] ALU_OUTPUT_COMB;
 
     
-    always_ff @(posedge rst_ni) begin
+    always_ff @(posedge ctrl_i or negedge rst_ni) begin
         if(rst_ni == 1'b0) 
             alu_res_o <= 32'd0;
         else begin
@@ -66,7 +66,7 @@ module execute
     logic [DATA_WIDTH-1:0] quotient; //result
     logic [DATA_WIDTH-1:0] result_fix; // Will decide if quotient should be signed
     logic [DATA_WIDTH-1:0] remainder; // mod
-    logic sign_bit;
+    logic sign_bit; // used for fixing sign bit in division
     logic signed_overflow;
     
     division Unit(
@@ -78,11 +78,8 @@ module execute
     .remainder(remainder),
     .Division_DONE(Division_DONE),
     .quotient(quotient),
-    .state(division_state)
+    .stall_o(stall_o)
     );
-    
-    //TODO: for division we have to add the stalling and only latch on to values when they are valid, right now they are always being driven,
-    // so garbage values are seen throughout the cycles
     
     
     always_comb begin // ALU selection OPCODE

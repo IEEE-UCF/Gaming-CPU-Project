@@ -17,7 +17,8 @@ module division
     input logic [31:0] divisor, // denominator
     output logic [63:0] remainder, // Mod 
     output logic Division_DONE, // done flag
-    output logic [31:0] quotient // result
+    output logic [31:0] quotient, // result
+    output logic stall_o // outputting to stall the pipeline when high
     );
     
     logic [31:0] dividend_reg; // internal registers driven by inputs
@@ -26,15 +27,15 @@ module division
     logic [31:0] quotient_reg;
     logic [5:0] counter;
     logic Division_DONE_reg;
-
-    
     
     state_t current_state, next_state; // Division FSM states 0 or 1
     
     Test_remainder_flag_t Test_remainder_flag; // Test remainder 0 or 1 state
+    
+    assign stall_o = current_state; // used for stalling the pipeline
  
  
- always_ff @(posedge clk_i) begin // Division Stall FSM
+ always_ff @(posedge clk_i or negedge rst_ni) begin // Division Stall FSM
     if(rst_ni == 1'b0) begin // Active low reset
         current_state <= IDLE;
     end else begin
@@ -96,7 +97,7 @@ module division
     end
  
     
-    always_ff @(posedge clk_i) begin
+    always_ff @(posedge clk_i or negedge rst_ni) begin
         if(rst_ni == 1'b0) begin
             dividend_reg <= 32'd0;
             divisor_reg <= 64'd0;
