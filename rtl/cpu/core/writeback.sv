@@ -128,8 +128,6 @@ module wb_stage (
     // Register File and CSR Writeback
     //
 
-    input logic zero_division_exception_i;
-    output logic divide_flag_o; 
 
     always_comb begin // Default outputs
         rd_we_o = 1'b0;  
