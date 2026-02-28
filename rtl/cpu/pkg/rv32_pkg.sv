@@ -78,4 +78,18 @@ package rv32_pkg;
     OPCODE_SYSTEM = 7'b1110011;
 */
 
+  // Decode Stage Control Signals
+  typedef struct packed { 
+    logic alu_src; // ALU source select (0 = rs2, 1 = imm)
+    logic [7:0] alu_op; // ALU operation code 
+    logic mem_read; // Memory read enable (to load)
+    logic mem_write;  // Memory write enable (to store)
+    logic mem_size; // Memory access size (00 = byte, 01 = halfword, 10 = word)
+    logic branch; // Branch instruction
+    logic jump; // Jump instruction
+    logic csr;  // CSR instruction
+    logic reg_ex_we;  // Register file write enable for EX stage result
+    logic reg_mm_we;  // Register file write enbale for MM stage result
+  } rv32_ctrl_s;
+
 endpackage : rv32_pkg
