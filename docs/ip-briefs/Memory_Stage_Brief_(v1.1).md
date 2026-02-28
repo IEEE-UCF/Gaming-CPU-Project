@@ -22,19 +22,27 @@
 #### **Interfaces (Ports)**
 - Any external input or output signal that will be used by the MM stage (subject to change)
 
-| Signal Name              | Direction | Width | Description                                                            |
-| ------------------------ | --------- | ----- | ---------------------------------------------------------------------- |
-| **Global Signals**       |           |       |                                                                        |
-| clk_i                    | In        | 1     | Main clock input                                                       |
-| rst_ni                   | In        | 1     | Active-low asynchronous reset                                          |
-|                          |           |       |                                                                        |
-| **Local Signals**        |           |       |                                                                        |
-| ls_ctrl_*_i              | In        | N/A   | Load/store control signals (size, sign, write enable)                  |
-| ex_res_i                 | In        | 32    | EX stage result, typically used as memory address                      |
-| dc_req_o                 | In        | N/A   | Data cache request                                                     |
-| dc_rsp_i                 | Out       | N/A   | Data cache response                                                    |
-| wb_data_o                | Out       | 32    | Resulting data from cache or EX for writeback (WB) stage               |
-|                          |           |       |                                                                        |
+| Signal Name              | Direction | Width | Description                                              |
+| ------------------------ | --------- | ----- | -------------------------------------------------------- |
+| clk_i                    | In        | 1     | Main clock input                                         |
+| rst_ni                   | In        | 1     | Active-low asynchronous reset                            |
+| ls_ctrl_load_i           | In        | 1     | Load control signal                                      |
+| ls_ctrl_store_i          | In        | 1     | Store control signal                                     |
+| ls_ctrl_size_i           | In        | 1     | Load/store size control signal                           |
+| ls_ctrl_unsigned_i       | In        | 1     | Load/store unsigned control signal                       |
+| ls_ctrl_write_en_i       | In        | 1     | Load/store write-enable control signal                   |
+| ex_res_i                 | In        | 32    | EX stage result, typically used as memory address        |
+| dc_req_o                 | In        | 1     | Data cache request                                       |
+| dc_rsp_i                 | Out       | 1     | Data cache response                                      |
+| mmu_access_o             | Out       | 1     |                                                          |
+| mmu_ready_i              | In        | 1     |                                                          |
+| mmu_page_fault_i         | In        | 1     |                                                          |
+| mmu_access_fault_i       | In        | 1     |                                                          |
+| wb_data_o                | Out       | 32    | Resulting data from cache or EX for writeback (WB) stage |
+| mem_stall_o              | Out       | 1     |                                                          |
+| mem_exception_o          | Out       | 1     | Cache exception flag                                     |
+| mem_exception_type_o     | Out       | 2     |                                                          |
+|                          |           |       |                                                          |
 
 ---
 #### **Reset/Init**

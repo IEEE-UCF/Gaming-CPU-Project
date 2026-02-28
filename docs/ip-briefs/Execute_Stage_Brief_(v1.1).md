@@ -23,20 +23,18 @@
 - Any external input or output signal that will be used by the EX stage
 - Subject to change
 
-| Signal Name              | Direction | Width | Description                                                            |
-| ------------------------ | --------- | ----- | ---------------------------------------------------------------------- |
-| **Global Signals**       |           |       |                                                                        |
-| clk_i                    | In        | 1     | Main clock input                                                       |
-| rst_ni                   | In        | 1     | Active-low asynchronous reset                                          |
-|                          |           |       |                                                                        |
-| **Local Signals**        |           |       |                                                                        |
-| ctrl_*_i                 | In        | N/A   | Control signals to execute                                             |
-| op_a_i                   | In        | 32    | Register A operand (data) from RF                                      |
-| op_b_i                   | In        | 32    | Register B operand (data) from RF                                      |
-| alu_res_o                | Out       | 32    | ALU result from processing operands                                    |
-| branch_taken_o           | Out       | 1     | Control signal for whether branch should be taken                      |
-| branch_target_o          | Out       | N/A   | Address for branch to redirect program counter (PC) to                 |
-|                          |           |       |                                                                        |
+| Signal Name     | Direction | Width | Description                                         |
+| --------------- | --------- | ----- | --------------------------------------------------- |
+| clk_i           | In        | 1     | Main clock input                                    |
+| rst_ni          | In        | 1     | Active-low asynchronous reset                       |
+| ctrl_i          | In        | 17    | Control signals to execute                          |
+| alu_op          | In        | 5     | ALU operation selector                              |
+| op_a_i          | In        | 32    | Register A operand (data) from RF                   |
+| op_b_i          | In        | 32    | Register B operand (data) from RF                   |
+| alu_res_o       | Out       | 32    | ALU result from processing operands                 |
+| branch_taken_o  | Out       | 1     | Control signal for whether branch should be taken   |
+| stall_o         | Out       | 1     | EX processing stall flag                            |
+|                 |           |       |                                                     |
 
 ---
 #### **Reset/Init**

@@ -8,7 +8,6 @@ package rv32_pkg;
   
   parameter int unsigned DATA_WIDTH = 32; // Data bus / operand width
   parameter int unsigned ADDR_WIDTH = 32; // Address bus width
-  parameter int unsigned IMM_WIDTH = 12; // Immediate field width
 
   parameter int unsigned MUL_CYCLES = 3; // Multiply latency in cycles
   parameter int unsigned DIV_CYCLES = 5; // Divide latency in cycles
@@ -79,6 +78,7 @@ package rv32_pkg;
     OPCODE_SYSTEM = 7'b1110011;
 */
 
+<<<<<<< HEAD
   // Decode Stage Control Signals
   typedef struct packed { 
     logic alu_src; // ALU source select (0 = rs2, 1 = imm)
@@ -94,3 +94,6 @@ package rv32_pkg;
   } rv32_ctrl_s;
 
 endpackage : rv32_pkg
+=======
+endpackage : rv32_pkg
+>>>>>>> ec24f769004cb4f273c114cf8c8bd90501d921c4

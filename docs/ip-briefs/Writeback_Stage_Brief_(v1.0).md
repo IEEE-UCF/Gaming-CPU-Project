@@ -20,18 +20,20 @@
 #### **Interfaces (Ports)**
 - Any external input or output signal that will be used by the MM stage (subject to change)
 
-| Signal Name              | Direction | Width | Description                                                            |
-| ------------------------ | --------- | ----- | ---------------------------------------------------------------------- |
-| **Global Signals**       |           |       |                                                                        |
-| clk_i                    | In        | 1     | Main clock input                                                       |
-| rst_ni                   | In        | 1     | Active-low asynchronous reset                                          |
-|                          |           |       |                                                                        |
-| **Local Signals**        |           |       |                                                                        |
-| rd_addr_i                | In        | 5     | Destination register address to send data to                           |
-| rd_data_i                | In        | 32    | Data for destination register                                          |
-| rd_we_o                  | Out       | 1     | Control signal for whether register file (RF) should be written        |
-| csr_*                    | I/O       | N/A   | Control-status registers read/write side-effects                       |
-|                          |           |       |                                                                        |
+| Signal Name    | Direction | Width | Description                                      |
+| -------------- | --------- | ----- | ------------------------------------------------ |
+| clk_i          | In        | 1     | Main clock input                                 |
+| rst_ni         | In        | 1     | Active-low asynchronous reset                    |
+| rd_addr_i      | In        | 5     | Destination register address to send data to     |
+| rd_data_i      | In        | 32    | Data for destination register                    |
+| rd_valid_i     | In        | 1     | Data write valid flag (mem we)                   |
+| rd_exception_i | In        | 1     |                                                  |
+| rd_we_o        | Out       | 1     | Control signal for writing to register file (RF) |
+| rd_waddr_o     | Out       | 5     | Destination register address                     |
+| csr_we_o       | Out       | 1     | Control-status register write enable             |
+| csr_addr_o     | Out       | 12    | Control-status register address                  |
+| csr_wdata_o    | Out       | 32    | Control-stautus data to write                    |
+| csr_rdata_o    | Out       | 32    |                                                  |
 
 ---
 #### **Reset/Init**

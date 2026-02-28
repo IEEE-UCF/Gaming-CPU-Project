@@ -23,20 +23,25 @@
 - Any external input or output signal that will be used by the ID stage
 - Subject to change
 
-| Signal Name              | Direction | Width | Description                                                            |
-| ------------------------ | --------- | ----- | ---------------------------------------------------------------------- |
-| **Global Signals**       |           |       |                                                                        |
-| clk_i                    | In        | 1     | Main clock input                                                       |
-| rst_ni                   | In        | 1     | Active-low asynchronous reset                                          |
-|                          |           |       |                                                                        |
-| **Semi-Global Signals**  |           |       |                                                                        |
-| inst_i                   | In        | 32    | Fetched instruction                                                    |
-| rf_a_i                   | In        | 32    | Register A operand (data) from RF                                      |
-| rf_b_i                   | In        | 32    | Register B operand (data) from RF                                      |
-| rf_a_o                   | Out       | 32    | Register A operand to execute (EX) stage                               |
-| rf_b_o                   | Out       | 32    | Register B operand to execute (EX) stage                               |
-| ctrl_*_o                 | Out       | N/A   | Control signals to execute                                             |
-|                          |           |       |                                                                        |
+| Signal Name              | Direction | Width | Description                              |
+| ------------------------ | --------- | ----- | -----------------------------------------|
+| clk_i                    | In        | 1     | Main clock input                         |
+| rst_ni                   | In        | 1     | Active-low asynchronous reset            |
+| inst_i                   | In        | 32    | Fetched instruction                      |
+| rf_a_i                   | In        | 32    | Register A operand from RF               |
+| rf_b_i                   | In        | 32    | Register B operand from RF               |
+| rf_a_o                   | Out       | 32    | Register A operand to EX stage           |
+| rf_b_o                   | Out       | 32    | Register B operand to EX stage           |
+| imm_o                    | Out       | 32    | Immediate opernd to EX stage             |
+| hazard_stall_i           | In        | 1     | Pipeline stall signal                    |
+| control_hazard_o         | Out       | 2     | Hazard detection signal                  |
+| ctrl_o                   | Out       | 17    | Control signals for later stages         |
+| fu_selec_o               | Out       | 3     | Functional unit selector to EX stage     |
+| amo_aq_o                 | Out       | 1     | Atomic memory acquire flag               |
+| amo_rl_o                 | Out       | 1     | Atomic memory release flag               |
+| amo_op_o                 | Out       | 4     | Atomic memory operation flag             |
+|                          |           |       |                                          |
+
 
 ---
 #### **Reset/Init**
