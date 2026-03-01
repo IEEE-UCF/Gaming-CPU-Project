@@ -1,108 +1,45 @@
-`timescale 1ns / 1ps
-parameter FIFO_DEPTH = 16;
-//UART interface
-module UARTmodule(
-//clock to generate Baud rate
-input wire clk,
-//reset signal to initialize/clear registers
-input wire rst,
-//Axi-lite bus interface
-input  wire [31:0] CPU_to_UART, 
-output wire [31:0] UART_to_CPU,
-//Recieve/Transmit serial bit 
-input wire rx_i,
-output wire tx_o,
-//Interrupt for CPU to read
-output wire irq_o
-    );
-/*******************************BUS BIT FIELDS*****************************/
-    //CPU to UART internal signals for write
-    wire awvalid = CPU_to_UART [0];
-    wire wvalid = CPU_to_UART [1];
-    wire [2:0] awaddr = CPU_to_UART [4:2];
-    wire bready = CPU_to_UART [5];
-    wire [7:0] wdata = CPU_to_UART [13:6];
-    //UART to CPU internal signals for write
-    wire awready;
-    wire wready;
-    wire bvalid;
-    wire [1:0] bresp;
-    //CPU to UART internal signals for read
-    wire arvalid = CPU_to_UART [15];
-    wire [2:0] araddr = CPU_to_UART [18:16];
-    wire rready = CPU_to_UART [19];
-    //UART to CPU internal signals for read
-    wire arready;
-    wire rvalid;
-    wire [1:0] rresp;
-    wire [7:0] rdata;
-    //assign write-related bits
-    
-/**************************REGISTERS & FIFO QUEUE*************************/ 
-    localparam ADDR_WIDTH = $clog2(FIFO_DEPTH);
-    reg [7:0] THR;
-    reg [7:0] RBR;
-    reg [7:0] IER;
-    reg [7:0] ISR;
-    reg [7:0] FCR;
-    reg [7:0] LCR;
-    reg [7:0] LSR;
-    reg [7:0] MCR;
-    reg [7:0] MSR;
-    reg [7:0] SPR;
-    reg [7:0] DLL;
-    reg [7:0] DLM;
-    reg [7:0] PSD;
-    //FIFO mem stack, pointers and status
-    reg [7:0] fifo_mem [0:FIFO_DEPTH-1];
-    reg [ADDR_WIDTH-1:0] waddr_ptr;
-    reg [ADDR_WIDTH-1:0] raddr_ptr;
-    reg [ADDR_WIDTH:0] count;
-    wire fifo_full  = (count == FIFO_DEPTH);
-    wire fifo_empty = (count == 0);
-
-
 /***************************TRANSMIT tx_o******************************/
-// FIFO -> shift register -> serial output
-
 module uart_tx (
     input  logic        clk,
     input  logic        rst,
-    input  logic [7:0]  DLM, DLL,        //Baud divisor registers
-    input  logic [7:0]  fifo_data_out,   //Data sitting at FIFO output
-    input  logic        fifo_empty,      //High if no data
-    output logic        tx_o,            //The actual serial line
-    output logic        fifo_rd_en       //Tells FIFO to pop data
+    input  logic [7:0]  DLM, DLL,        // Baud rate divisor registers
+    input  logic [7:0]  fifo_data_out,   // Data from TX FIFO
+    input  logic        fifo_empty,      // FIFO empty flag
+    output logic        tx_o,            // Serial transmit line
+    output logic        fifo_rd_en       // FIFO read enable pulse
 );
 
-    //1. State Definitions (Acts as the brain for the transmitter)
+    // 1. Transmit State Machine
     typedef enum logic [1:0] {
-        IDLE      = 2'b00,
-        START_BIT = 2'b01,
-        DATA_BITS = 2'b10,
-        STOP_BITS = 2'b11
+        IDLE      = 2'b00,  // Line idle (high)
+        START_BIT = 2'b01,  // Send start bit (0)
+        DATA_BITS = 2'b10,  // Send 8 data bits (LSB first)
+        STOP_BIT  = 2'b11   // Send stop bit (1)
     } tx_state_e;
 
     tx_state_e tx_state_c, tx_state_n;
-    logic [7:0] tx_shift_reg;     
-    logic [3:0] tx_bit_counter; 
-    
-    //2. Baud Rate Generator (creates a tick when a new bit needs to be sent)
-    wire [15:0] baud_divisor = {DLM, DLL}; 
-    wire [31:0] rate_limit   = baud_divisor;   //TX does NOT oversample
+
+    logic [7:0] tx_shift_reg;   // Holds byte being transmitted
+    logic [2:0] tx_bit_counter; // Counts 0–7 data bits
+
+    // 2. Baud Rate Generator (creates 1-cycle pulse per bit)
+    wire [15:0] baud_divisor = {DLM, DLL};
+    wire [31:0] rate_limit = (baud_divisor == 16'd0) ? 32'd1 
+                                                     : {16'd0, baud_divisor};
+
     reg  [31:0] clk_counter;
-    logic tx_bit_clk_en;
+    logic       tx_bit_clk_en;  // Bit timing enable pulse
 
     always_ff @(posedge clk or posedge rst) begin
         if (rst) begin
-            clk_counter   <= 0;
+            clk_counter   <= 32'd0;
             tx_bit_clk_en <= 1'b0;
-        end 
+        end
         else begin
             if (clk_counter >= rate_limit - 1) begin
-                clk_counter   <= 0;
-                tx_bit_clk_en <= 1'b1;   //1-cycle pulse
-            end 
+                clk_counter   <= 32'd0;
+                tx_bit_clk_en <= 1'b1;  // Advance 1 bit
+            end
             else begin
                 clk_counter   <= clk_counter + 1;
                 tx_bit_clk_en <= 1'b0;
@@ -110,77 +47,119 @@ module uart_tx (
         end
     end
 
-    //3. FIFO Handshake (registered 1-cycle pulse)
-    //Read enable only when transitioning from IDLE -> START_BIT
-    always_ff @(posedge clk or posedge rst) begin
-        if (rst)
-            fifo_rd_en <= 1'b0;
-        else begin
-            fifo_rd_en <= 1'b0; //default
+    // 3. FIFO Read Controller
+    // Reads one byte from FIFO and stores it locally before transmission
+    typedef enum logic {
+        RD_IDLE = 1'b0,
+        RD_WAIT = 1'b1
+    } rd_state_e;
 
-            if (tx_bit_clk_en &&
-                tx_state_c == IDLE &&
-                !fifo_empty)
-                fifo_rd_en <= 1'b1;
+    rd_state_e rd_state_c;
+
+    logic [7:0] fifo_data_reg;   // Latched FIFO byte
+    logic       fifo_data_valid; // Indicates byte ready for TX
+
+    wire fifo_data_consumed = (tx_state_c == START_BIT) && tx_bit_clk_en;
+
+    always_ff @(posedge clk or posedge rst) begin
+        if (rst) begin
+            rd_state_c      <= RD_IDLE;
+            fifo_rd_en      <= 1'b0;
+            fifo_data_reg   <= 8'd0;
+            fifo_data_valid <= 1'b0;
+        end
+        else begin
+            fifo_rd_en <= 1'b0;  // Default
+
+            case (rd_state_c)
+                RD_IDLE: begin
+                    // Request new byte if idle and FIFO has data
+                    if ((tx_state_c == IDLE) && (!fifo_empty) && (!fifo_data_valid)) begin
+                        fifo_rd_en <= 1'b1;
+                        rd_state_c <= RD_WAIT;
+                    end
+
+                    if (fifo_data_consumed)
+                        fifo_data_valid <= 1'b0;
+                end
+
+                RD_WAIT: begin
+                    // Capture FIFO output on next clock
+                    fifo_data_reg   <= fifo_data_out;
+                    fifo_data_valid <= 1'b1;
+                    rd_state_c      <= RD_IDLE;
+                end
+            endcase
+
+            if (fifo_data_consumed)
+                fifo_data_valid <= 1'b0;
         end
     end
 
-    //4. Sequential Engine (always_ff block builds memory)
+    // 4. State + Shift Logic (advances on bit clock)
     always_ff @(posedge clk or posedge rst) begin
         if (rst) begin
             tx_state_c     <= IDLE;
             tx_shift_reg   <= 8'b0;
-            tx_bit_counter <= 4'b0;
-        end 
+            tx_bit_counter <= 3'd0;
+        end
         else if (tx_bit_clk_en) begin
-
-            tx_state_c <= tx_state_n; //Move to next state every bit-period
+            tx_state_c <= tx_state_n;
 
             case (tx_state_c)
-
                 IDLE: begin
-                    tx_bit_counter <= 0;
+                    tx_bit_counter <= 3'd0;
+                end
 
-                    //Load shift register ONLY when starting transmission
-                    if (!fifo_empty)
-                        tx_shift_reg <= fifo_data_out;
+                START_BIT: begin
+                    // Load shift register at start of transmission
+                    tx_shift_reg   <= fifo_data_reg;
+                    tx_bit_counter <= 3'd0;
                 end
 
                 DATA_BITS: begin
-                    //Shift right each bit-period (LSB first transmission)
+                    // Shift right (LSB transmitted first)
                     tx_shift_reg   <= {1'b0, tx_shift_reg[7:1]};
                     tx_bit_counter <= tx_bit_counter + 1;
                 end
 
-                STOP_BITS: begin
-                    tx_bit_counter <= 0;
-                end
-
-                default: begin
-                    tx_bit_counter <= 0;
+                STOP_BIT: begin
+                    tx_bit_counter <= 3'd0;
                 end
             endcase
         end
     end
 
-    //5. Combinational Logic (if then statements for decision making)
+    // 5. Next-State Logic
     always_comb begin
         tx_state_n = tx_state_c;
 
         if (tx_bit_clk_en) begin
             case (tx_state_c)
-                IDLE:      if (!fifo_empty) tx_state_n = START_BIT;
-                START_BIT: tx_state_n = DATA_BITS;
-                DATA_BITS: if (tx_bit_counter == 4'd7) tx_state_n = STOP_BITS;
-                STOP_BITS: tx_state_n = IDLE;
-                default:   tx_state_n = IDLE;
+                IDLE:
+                    if (fifo_data_valid)
+                        tx_state_n = START_BIT;
+
+                START_BIT:
+                    tx_state_n = DATA_BITS;
+
+                DATA_BITS:
+                    if (tx_bit_counter == 3'd7)
+                        tx_state_n = STOP_BIT;
+
+                STOP_BIT:
+                    tx_state_n = IDLE;
+
+                default:
+                    tx_state_n = IDLE;
             endcase
         end
     end
 
-    //6. Output Assignment (makes the last decision on what the tx_o is doing based on the state that it's in)
-    assign tx_o = (tx_state_c == DATA_BITS)  ? tx_shift_reg[0] :
-                  (tx_state_c == START_BIT)  ? 1'b0 :
-                  1'b1; //Defaults to High (Idle/Stop)
-    
+    // 6. Serial Output Logic
+    // Idle and stop bits are high, start bit is low
+    assign tx_o =
+        (tx_state_c == START_BIT) ? 1'b0 :
+        (tx_state_c == DATA_BITS) ? tx_shift_reg[0] :
+        1'b1;
 endmodule
