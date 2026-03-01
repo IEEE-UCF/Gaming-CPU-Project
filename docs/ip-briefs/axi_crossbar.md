@@ -35,14 +35,14 @@ Central AXI4 interconnect between managers and subordinates. Performs address de
 
 ### Performance Targets
 
-- **Clock:** **TBD** MHz (ASIC), **TBD** MHz (FPGA)
+- **Clock:** 100 MHz (FPGA)
 - **Throughput:** **1 beat/cycle** once granted (R & W)
 - **Latency (xbar-only):** addr → grant ≤ 2 cycles; read addr → first data ≤ 3 cycles beyond subordinate; last-W → B ≤ 3 cycles
 - **Arbitration:** **Round-robin;** starvation ≤ **N_M grants**
-- **Bursts:** **INCR**, max len **TBD**
-- **Outstanding:** per-manager **TBD R/TBD W**; backpressure only
-- **CDC:** each crossing adds **+TBD cycles;** throughput unchanged
-- **Reset:** READY may assert within ≤ **TBD cycles** after `rst_ni` deassert 
+- **Bursts:** **INCR**, max len 16
+- **Outstanding:** per-manager 2 R/2 W; backpressure only
+- **CDC:** each crossing adds 3-5 cycles; throughput unchanged
+- **Reset:** READY may assert within ≤ 2 cycles after `rst_ni` deassert 
 ---
 
 ### Behavior & Timing

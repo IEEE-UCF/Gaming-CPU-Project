@@ -1,6 +1,6 @@
 module axi_dcache_port #(
   // TODO: Parameter setups
-  parameter
+  parameter unsigned 
 )(
   // TODO: Port set up
   ports
@@ -8,6 +8,7 @@ module axi_dcache_port #(
   // TODO: Input logic
   input logic clk_i,
   input logic rst_ni
+  
   
 );
 
