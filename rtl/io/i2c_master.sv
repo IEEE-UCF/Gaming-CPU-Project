@@ -7,7 +7,7 @@ module i2c_master (
     input  logic       rw,       // 0 for Write, 1 for Read
     
     output logic [7:0] data_out, // Data read from slave
-    output logic       ready,    // Controller is idle
+  	output logic       ready,    // Controller is idle (Bus released for slave ACK or finished transmission
     output logic       error,    // NACK detected
     
     // I2C Physical Interface
@@ -94,8 +94,24 @@ module i2c_master (
                     else bit_cnt <= bit_cnt - 1;
                 end
 
-                // ... Additional states for READ_DATA and STOP logic
-                
+            	READ_DATA: begin 
+                  sda_en <= 0;
+                  data_out[bit_cnt] <= sda_in;
+                  
+                  if (bit_cnt == 0) begin
+                    state <= ACK_DATA;
+                  end else begin
+                    bit_cnt <= bit_cnt - 1;
+            		state <= READ_DATA;
+            	  end
+                end
+            
+            	ACK_DATA: begin
+                  sda_en <= 1; //Take control of bus
+                  sda_out <= 1'b1;  //Send NACK -> Done sending data
+                  state <= STOP;
+                end
+            
                 STOP: begin
                     sda_en  <= 1;
                     sda_out <= 0;
@@ -104,10 +120,7 @@ module i2c_master (
                 end
               
                 default : begin
-                  	sda_en  <= 1;
-                    sda_out <= 0;
-                    // Then release SDA while SCL is high
-                    state   <= IDLE;
+                  	state <= IDLE;
                 end
             endcase
         end
