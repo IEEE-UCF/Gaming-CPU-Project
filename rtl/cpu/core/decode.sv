@@ -16,7 +16,7 @@ module decode (
   output logic [DATA_WIDTH-1:0] rf_a_o,
   output logic [DATA_WIDTH-1:0] rf_b_o,
 
-  // Hazard Control
+  // Illegal Instruction (Control Hazard)
   output logic control_hazard_o,
 
   // Execute Inputs (includes rf_a_o and rf_b_o)
