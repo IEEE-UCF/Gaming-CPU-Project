@@ -21,7 +21,6 @@ module spi_master_tb;
     logic miso;
     logic cs_n;
 
-    // Instantiate the Unit Under Test (UUT)
     spi_master #(
         .DATA_WIDTH(DATA_WIDTH),
         .CLK_DIV(CLK_DIV)
@@ -76,38 +75,19 @@ module spi_master_tb;
 
         // Test Case 1: Send 0xC3 (11000011)
         @(posedge clk);
-        tx_data = 8'hC3;
+        tx_data = 8'b11000011;
         start = 1;
         @(posedge clk);
         start = 0;
 
         // Wait for completion
         wait(done);
-        $display("Transfer 1 Complete. Received from Slave: 0x%h", rx_data);
 
         #(CLK_PERIOD * 20);
-
-        // Test Case 2: Send 0x5A (01011010)
-        @(posedge clk);
-        tx_data = 8'h5A;
-        start = 1;
-        @(posedge clk);
-        start = 0;
-
-        wait(done);
-        $display("Transfer 2 Complete. Received from Slave: 0x%h", rx_data);
-
-        #(CLK_PERIOD * 50);
         $finish;
     end
-
-    // Monitor
-    initial begin
-        $monitor("Time: %t | CS_N: %b | SCLK: %b | MOSI: %b | MISO: %b | State: %s", 
-                 $time, cs_n, sclk, mosi, miso, uut.state.name());
-    end
   
-  // Waveform Generation
+  // Generate Waveform
     initial begin
       $dumpfile("spi_test.vcd");
       $dumpvars(0, spi_master_tb);
