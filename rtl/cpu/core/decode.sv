@@ -58,7 +58,6 @@ module decode (
   assign rs2    = instr_i[24:20];
   assign funct7 = instr_i[31:25];
   assign shamt = instr_i [24:20];
-  // Not implemented yet
   assign pred = instr_i[27:24]; // Input/Output/Read/Write before fence
   assign succ = instr_i[23:20]; // Input/Output/Read/Write after fence
 
