@@ -3,7 +3,8 @@
 // Written by: Arnold Stauffer
 // Purpose:
 // Receive either a read or write request from a Master to reduce the complexity of 
-// bursts of instructions. This will provide an interface for the Master to reduce workload
+// bursts of instructions, essentially helping with the read/write transactions. 
+// This will provide an interface for the Master to reduce workload
 // and handle register access for multiple transactions, etc.
 // 
 */
@@ -40,7 +41,7 @@ module axi_to_axi_lite import interconnect_pkg::*(
     // Captures Writing Requests
     logic [ADDR_WIDTH-1:0] awaddr_reg;
     logic [DATA_WIDTH-1:0] wdata_reg;
-    logic [[(DATA_WIDTH/8)-1:0] wstrb_reg;
+    logic [(DATA_WIDTH/8)-1:0] wstrb_reg;
     logic aw_captured;
     logic w_captured;
   
@@ -100,7 +101,7 @@ module axi_to_axi_lite import interconnect_pkg::*(
             // Capture write data
             if (wvalid_i && wready_o) begin
                 wdata_reg   <= wdata_i;
-                wstrb_reg   <= wstrb_i;
+                wstrb_reg   <= wstrb;
                 w_captured  <= 1'b1;
             end
 
@@ -150,5 +151,6 @@ module axi_to_axi_lite import interconnect_pkg::*(
         end
     end 
 endmodule
+
 
 
