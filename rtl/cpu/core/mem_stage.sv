@@ -35,9 +35,16 @@ module mem_stage #(
     output logic mem_stall_o,
     output logic mem_exception_o,
     output logic [1:0] mem_exception_type_o,
+
+    // Cache Control Interface
+    output logic cache_write_o,   
+    output logic [ADDR_WIDTH-1:0] cache_tag_o,  
+    output logic [DATA_WIDTH-1:0] cache_data_o,
+    output logic cache_valid_o,      
+    input  logic cache_ready_i,       
 );
 
-    // Rest of Signals
+    // Registers
     logic [DATA_WIDTH-1:0] load_data;
     logic [DATA_WIDTH-1:0] store_data;
     logic mem_op_valid;
@@ -47,6 +54,21 @@ module mem_stage #(
     logic store_operation;
     logic load_operation;
     logic [ADDR_WIDTH-1:0] aligned_address;
+    // Reference Regisers (Please Ignore)
+    // logic [ADDR_WIDTH-1:0] miss_addr_reg; // Original address that caused miss
+    // logic [DATA_WIDTH-1:0] miss_data_reg; // Data from memory for cache write
+    // logic [ADDR_WIDTH-1:0] miss_tag_reg;  // Tag bits from address (upper bits)
+    // logic miss_is_load_reg; // Whether the missed access was a load vs store
+    // logic miss_is_store_reg;
+    // logic [1:0] miss_size_reg;
+    // logic miss_sign_reg;
+    // Atomic Access Support Registers
+    // logic [DATA_WIDTH-1:0] address_reg;
+    // logic [DATA_WIDTH-1:0] store_data_reg;
+    // logic [1:0] size_reg;
+    // logic sign_reg;
+    // logic is_load_reg;
+    // logic is_store_reg;
 
     typedef enum logic [1:0] {
         MEM_IDLE,
@@ -57,17 +79,6 @@ module mem_stage #(
 
     mem_state_t current_state, next_state;
     
-    //
-    // Registers
-    //
-
-    logic [DATA_WIDTH-1:0] address_reg;
-    logic [DATA_WIDTH-1:0] store_data_reg;
-    logic [1:0] size_reg;
-    logic sign_reg;
-    logic is_load_reg;
-    logic is_store_reg;
-
     //
     // Reset/Initialization
     //
@@ -257,14 +268,17 @@ module mem_stage #(
     // Cache Miss Handling
     //
 
-    always_ff @(posedge clk_i) begin
-        if (mem_access_valid && !dc_rsp_i) begin
-            cache_miss <= 1'b1; // If valid memory access but no response, Cache miss
-        end else if (dc_rsp_i) begin
-            cache_miss <= 1'b0; // Clear cache miss on response
-        end
-    end
-
+    typedef enum logic [2:0] {
+        CACHE_IDLE,           // Normal operation
+        CACHE_MISS_DETECT,    // Miss detected
+        CACHE_MEM_READ,       // Send original address, wait for memory
+        CACHE_MEM_READ_WAIT,  // Continue waiting for memory
+        CACHE_WRITE_ENTRY,    // Write cache entry with data and tag
+        CACHE_WRITE_WAIT,     // Wait for cache write to complete
+        CACHE_RESTART         // Restart instruction execution
+    } cache_miss_state_t;
+    
+    cache_miss_state_t cache_state, cache_state_next;
 
 
 
