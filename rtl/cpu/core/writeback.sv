@@ -13,11 +13,13 @@ module wb_stage (
     input logic [DATA_W-1:0] rd_data_i,
     input logic rd_valid_i,
     input logic rd_exception_i,
+    input logic zero_division_exception_i,
 
     // Outputs to Register File
     output logic rd_we_o,
     output logic [RF_ADDR_WIDTH-1:0] rd_waddr_o,
     output logic [DATA_W-1:0] rd_wdata_o,
+    output logic divide_flag_o,
 
     // CSR Interface
     output logic csr_we_o,
@@ -30,10 +32,7 @@ module wb_stage (
     logic [DATA_W-1:0] wb_exception_reg;
     logic wb_addr_reg;
     logic wb_valid_reg;
-    logic wb_exception_pending;
-    logic zero_division_exception_i;
-    logic divide_flag_o; 
-
+    logic wb_exception_pending_reg;
 );
 
     // Unique Case FSM
@@ -57,7 +56,7 @@ module wb_stage (
             wb_exception_reg <= '0;
             wb_addr_reg <= '0;
             wb_valid_reg <= 1'b0;
-            wb_exception_pending <= 1'b0;
+            wb_exception_pending_reg <= 1'b0;
 
             rd_we_o <= 1'b0; // All control signals
             csr_we_o <= 1'b0;
@@ -71,17 +70,17 @@ module wb_stage (
                 wb_data_reg <= rd_data_i;
                 wb_addr_reg <= rd_addr_i;
                 wb_valid_reg <= rd_valid_i;
-                wb_exception_pending <= rd_exception_i;
+                wb_exception_pending_reg <= rd_exception_i;
             end
 
             if (rd_exception_i) begin // If an exception is signaled, store the exception code
-                wb_exception_pending <= 1'b1;   
+                wb_exception_pending_reg <= 1'b1;   
                 wb_exception_reg <= rd_data_i;
             end
 
             if (wb_state_e == WB_COMMIT) begin  // Clears Flags after commit
-                 wb_exception_pending <= 1'b0;
-                wb_exception_pending <= 1'b0;
+                 wb_exception_pending_reg <= 1'b0;
+                wb_exception_pending_reg <= 1'b0;
             end
         end
     end
@@ -94,7 +93,7 @@ module wb_stage (
         next_state = current_state;
         case(current_state)
             WB_IDLE: begin 
-                if (wb_exception_pending) begin // If an exception is pending, commmit to execption state
+                if (wb_exception_pending_reg) begin // If an exception is pending, commmit to execption state
                     next_state = WB_EXCEPTION; 
                 end else if (wb_valid_reg && rd_we_i) begin // If valid writeback register, commit to register state
                     next_state = WB_COMMIT; 
@@ -110,7 +109,7 @@ module wb_stage (
             end
 
             WB_EXCEPTION: begin // Remain in this state until cleared, then return to idle
-                if (!wb_exception_pending) begin
+                if (!wb_exception_pending_reg) begin
                     next_state = WB_IDLE;
                 end
             end
@@ -128,7 +127,6 @@ module wb_stage (
     // Register File and CSR Writeback
     //
 
-
     always_comb begin // Default outputs
         rd_we_o = 1'b0;  
         rd_waddr_o = '0; 
@@ -137,7 +135,6 @@ module wb_stage (
 
         if(current_state == WB_COMMIT && wb_valid_reg) begin // Commits to register file only if valid
             rd_we_o = 1'b1;
-
             if(wb_addr_reg == 5'b00000) begin
                 rd_we_o = 1'b0; // x0 is hardwired to 0
             end
@@ -162,8 +159,7 @@ module wb_stage (
             csr_we_o <= 1'b1; 
             csr_addr_o <= CSR_MCAUSE; 
             csr_wdata_o <= wb_exception_reg; 
-
-        end else if (current_state == WB_COMMIT && wb_exception_pending) begin // If committing an instruction but exception pending, commit exception
+        end else if (current_state == WB_COMMIT && wb_exception_pending_reg) begin // If committing an instruction but exception pending, commit exception
             csr_we_o <= 1'b1; 
             csr_addr_o <= CSR_MCAUSE; 
             csr_wdata_o <= wb_exception_reg; 
@@ -185,11 +181,9 @@ module wb_stage (
             trap_o = 1'b1; 
             pipeline_flush_o = 1'b1; 
             // Change to one If Statement
-        end else if (current_state == WB_COMMIT && wb_exception_pending) begin // If exception pending, signal a trap and flush on commit
+        end else if (current_state == WB_COMMIT && wb_exception_pending_reg) begin // If exception pending, signal a trap and flush on commit
             trap_o = 1'b1; 
             pipeline_flush_o = 1'b1; 
-
-        // Add Exception Types for more precise control over pipeline behavior (e.g., different flush behavior for different exceptions)
         end else if (current_state == WB_CSR_ACCESS) begin // If accessing CSR, stall until complete
             wb_stall_o = 1'b1; 
         end
