@@ -28,7 +28,7 @@
 | clk_i           | In        | 1     | Main clock input                                    |
 | rst_ni          | In        | 1     | Active-low asynchronous reset                       |
 | ctrl_i          | In        | 17    | Control signals to execute                          |
-| alu_op          | In        | 5     | ALU operation selector                              |
+| ALU_OP          | In        | 5     | ALU operation selector                              |
 | op_a_i          | In        | 32    | Register A operand (data) from RF                   |
 | op_b_i          | In        | 32    | Register B operand (data) from RF                   |
 | alu_res_o       | Out       | 32    | ALU result from processing operands                 |
