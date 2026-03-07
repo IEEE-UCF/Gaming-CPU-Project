@@ -13,7 +13,7 @@ module wb_stage (
     input logic [DATA_W-1:0] rd_data_i,
     input logic rd_valid_i,
     input logic rd_exception_i,
-    input logic zero_division_exception_i,
+    input logic zero_div_exception_i,
 
     // Outputs to Register File
     output logic rd_we_o,
