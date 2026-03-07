@@ -13,7 +13,7 @@ module wb_stage (
     input logic [DATA_W-1:0] rd_data_i,
     input logic rd_valid_i,
     input logic rd_exception_i,
-    input logic zero_division_exception_i,
+    input logic zero_div_exception_i,
 
     // Outputs to Register File
     output logic rd_we_o,
@@ -142,7 +142,7 @@ module wb_stage (
 
         // Check with Adrian about division by zero flag
         always_ff @(posedge clk_i) begin
-            if (zero_division_exception_i) begin
+            if (zero_div_exception_i) begin
                 divide_flag_o <= 1'b1; // Set divide flag on division by zero exception
             end else begin
                 divide_flag_o <= 1'b0; // Clear it otherwise
