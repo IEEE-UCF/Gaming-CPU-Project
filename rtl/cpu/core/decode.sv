@@ -7,9 +7,6 @@ module decode (
   input logic clk_i,
   input logic rst_ni,
 
-  // Fetch 
-  input logic [DATA_WIDTH-1:0] pc_i, // PC from fetch stage
-
   // Register File 
   input logic [DATA_WIDTH-1:0] rf_a_i,
   input logic [DATA_WIDTH-1:0] rf_b_i,
@@ -23,7 +20,6 @@ module decode (
   output rv32_ctrl_s ctrl_o, 
   output logic [DATA_WIDTH-1:0] imm_o,
   output fu_selec_e fu_selec_o, 
-  output logic [DATA_WIDTH-1:0] pc_o,
 
   output logic [3:0] pred_o, 
   output logic [3:0] succ_o,
@@ -403,7 +399,6 @@ module decode (
   assign pred_o = pred;
   assign succ_o = succ;
   assign fence_o = fence;
-  assign pc_o = pc_i;
 
   // Illegal Instruction Output
   assign control_hazard_o = illegal_instr;

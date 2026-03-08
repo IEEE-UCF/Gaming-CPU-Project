@@ -83,3 +83,4 @@ module hazard_unit (
     // Hazard Detection Unit
 
 
+endmodule 
