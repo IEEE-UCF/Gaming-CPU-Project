@@ -1,12 +1,7 @@
 // Code your design here
 `timescale 1ns / 1ps
 
-// import rv32_pkg::*;
-
-parameter DATA_WIDTH = 32;
-parameter ADDR_WIDTH = 32;
-parameter HAS_A = 1;
-
+import rv32_pkg::*;
 
 module mem_stage (
 
