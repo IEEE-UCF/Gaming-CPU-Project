@@ -1,6 +1,7 @@
-'`timescale 1ns / 1ps
+`timescale 1ns / 1ps
 
 import rv32_pkg::*;
+
 
 module wb_stage (
 
@@ -10,7 +11,7 @@ module wb_stage (
 
     // Designation Register
     input logic [RF_ADDR_WIDTH-1:0] rd_addr_i,
-    input logic [DATA_W-1:0] rd_data_i,
+    input logic [DATA_WIDTH-1:0] rd_data_i,
     input logic rd_valid_i,
     input logic rd_exception_i,
     input logic zero_division_exception_i,
@@ -18,21 +19,21 @@ module wb_stage (
     // Outputs to Register File
     output logic rd_we_o,
     output logic [RF_ADDR_WIDTH-1:0] rd_waddr_o,
-    output logic [DATA_W-1:0] rd_wdata_o,
+    output logic [DATA_WIDTH-1:0] rd_wdata_o,
     output logic divide_flag_o,
 
     // CSR Interface
     output logic csr_we_o,
     output logic [11:0] csr_addr_o,
-    output logic [DATA_W-1:0] csr_wdata_o,
-    output logic [DATA_W-1:0] csr_rdata_o,
+    output logic [DATA_WIDTH-1:0] csr_wdata_o,
+    output logic [DATA_WIDTH-1:0] csr_rdata_o,
 
     // Registers and Signals
-    output logic [DATA_W-1:0] wb_data_reg;
-    output logic [DATA_W-1:0] wb_exception_reg;
-    output logic [RF_ADDR_WIDTH-1:0] wb_addr_reg;
-    output logic wb_valid_reg;
-    output logic wb_exception_pending_reg;
+  	output logic [DATA_WIDTH-1:0] wb_data_reg,
+  	output logic [DATA_WIDTH-1:0] wb_exception_reg,
+  	output logic [RF_ADDR_WIDTH-1:0] wb_addr_reg,
+    output logic wb_valid_reg,
+    output logic wb_exception_pending_reg
 );
 
     // Unique Case FSM
