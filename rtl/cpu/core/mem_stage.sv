@@ -1,6 +1,6 @@
 `timescale 1ns / 1ps
 
-import rv32_pkg::*; 
+import rv32_pkg::*;
 
 module mem_stage #(
 
@@ -12,11 +12,14 @@ module mem_stage #(
     input logic ls_ctrl_load_i,
     input logic ls_ctrl_store_i,
     input logic ls_ctrl_size_i,
-    input logic ls_ctrl_unsigned_i,
+    input logic ls_ctrl_sign_i,
     input logic ls_ctrl_write_en_i,
 
     // Execution Stage Results
+    input logic [DATA_WIDTH-1:0] ex_res_i,
     input logic [DATA_WIDTH-31:0] ex_data_i,
+    input logic ex_valid_i,
+
 
     // Data Cache Interface
     output logic dc_req_o,
@@ -41,10 +44,15 @@ module mem_stage #(
     output logic [ADDR_WIDTH-1:0] cache_tag_o,  
     output logic [DATA_WIDTH-1:0] cache_data_o,
     output logic cache_valid_o,      
-    input  logic cache_ready_i,       
+    input  logic cache_ready_i, 
+
+    // Pipline Stall and Flush
+    input logic stall_i;
+    output logic flush_i;
+     
 );
 
-    // Registers
+    // Internal Signals
     logic [DATA_WIDTH-1:0] load_data;
     logic [DATA_WIDTH-1:0] store_data;
     logic mem_op_valid;
@@ -54,6 +62,14 @@ module mem_stage #(
     logic store_operation;
     logic load_operation;
     logic [ADDR_WIDTH-1:0] aligned_address;
+    logic [DATA_WIDTH-1:0] store_data_reg;
+    logic [1:0] size_reg;
+    logic sign_reg;
+    logic sign_reg;
+    logic is_load_reg;
+    logic is_store_reg;
+    logic [DATA_WIDTH-1:0] address_reg;
+    logic bubble;
     // Reference Regisers (Please Ignore)
     // logic [ADDR_WIDTH-1:0] miss_addr_reg; // Original address that caused miss
     // logic [DATA_WIDTH-1:0] miss_data_reg; // Data from memory for cache write
@@ -62,14 +78,7 @@ module mem_stage #(
     // logic miss_is_store_reg;
     // logic [1:0] miss_size_reg;
     // logic miss_sign_reg;
-    // Atomic Access Support Registers
-    // logic [DATA_WIDTH-1:0] address_reg;
-    // logic [DATA_WIDTH-1:0] store_data_reg;
-    // logic [1:0] size_reg;
-    // logic sign_reg;
-    // logic is_load_reg;
-    // logic is_store_reg;
-
+    
     typedef enum logic [1:0] {
         MEM_IDLE,
         MEM_REQUEST,
@@ -78,7 +87,12 @@ module mem_stage #(
     } mem_state_t;
 
     mem_state_t current_state, next_state;
-    
+
+    //
+    // Stall Logic 
+    //
+    assign mm_stall_o = ls_ctrl_mem_en_i & ex_valid_i & ~mem_response_valid & ~exception_pending & ~flush_i;
+
     //
     // Reset/Initialization
     //
@@ -237,7 +251,7 @@ module mem_stage #(
                 2'b10: begin // Word load, no extension needed
                     load_data = dc_rsp_i;
                 end
-                `default: begin
+                default: begin
                     load_data: '0;
                 end
             endcase

@@ -28,11 +28,11 @@ module wb_stage (
     output logic [DATA_W-1:0] csr_rdata_o,
 
     // Registers and Signals
-    logic [DATA_W-1:0] wb_data_reg;
-    logic [DATA_W-1:0] wb_exception_reg;
-    logic wb_addr_reg;
-    logic wb_valid_reg;
-    logic wb_exception_pending_reg;
+    output logic [DATA_W-1:0] wb_data_reg;
+    output logic [DATA_W-1:0] wb_exception_reg;
+    output logic [RF_ADDR_WIDTH-1:0] wb_addr_reg;
+    output logic wb_valid_reg;
+    output logic wb_exception_pending_reg;
 );
 
     // Unique Case FSM
@@ -188,6 +188,35 @@ module wb_stage (
             wb_stall_o = 1'b1; 
         end
     end
-)
+
+    //
+    // Pipeline Stall and Flush Logic
+    //
+    assign bubble = ~rst_ni | flush_i;  // async reset OR sync flush
+ 
+    always_ff @(posedge clk_i or negedge rst_ni) begin : mm_wb_regs
+        if (bubble) begin
+            wb_data_reg              <= '0;
+            wb_exception_reg         <= '0;
+            wb_addr_reg              <= 1'b0;
+            wb_valid_reg             <= 1'b0;
+            wb_exception_pending_reg <= 1'b0;
+        end else if (!mm_stall_o) begin
+            wb_exception_pending_reg <= exception_pending;
+            wb_exception_reg         <= exception_vec;
+            wb_valid_reg             <= ex_valid_i
+            & (mem_response_valid | ~ls_ctrl_mem_en_i);
+            wb_addr_reg              <= ls_ctrl_mem_en_i & ~ls_ctrl_we_i;
+ 
+            if (exception_pending) begin // Zero data field on exceptio
+                wb_data_reg <= '0;
+            end else if (ls_ctrl_mem_en_i & ~ls_ctrl_we_i) begin // Load: sign/zero-extended result from D$ or MMU
+                wb_data_reg <= load_data_extended;
+            end else begin // Store or non-memory (ALU result, JAL PC+4, etc.)
+                wb_data_reg <= ex_res_i;
+            end
+        end
+    end
+
 endmodule : wb_stage
 
