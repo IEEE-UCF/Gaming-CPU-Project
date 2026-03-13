@@ -379,10 +379,12 @@ assign tx_o =
 logic rx_data_int;
 logic tx_empty_int;
 logic line_status_int;
+logic modem_status_int;
 
 // IER[0]: Enable Received Data Available Interrupt
 // IER[1]: Enable Transmitter Holding Register Empty Interrupt
 // IER[2]: Enable Receiver Line Status Interrupt (Errors)
+// IER[3]: Enable Modem Status Interrupt
 
 // 1. Data available in RX FIFO
 assign rx_data_int = IER[0] & (!fifo_empty); 
@@ -393,9 +395,9 @@ assign tx_empty_int = IER[1] & (count == 0 && tx_state_c == IDLE);
 // 3. Any error bit (Overrun, Parity, Framing, Break) is set in the LSR
 assign line_status_int = IER[2] & (|LSR[4:1]); 
 
-// Master interrupt output sent to CPU
-assign irq_o = rx_data_int | tx_empty_int | line_status_int;
-
+// 4. Modem Status change (change in state of CTS, DSR, RI, or DCD signal)
+assign modem_status_int = IER[3] & (|MSR[3:0]);
+    
 // Update Interrupt Status Register (ISR) for the CPU to read
 // ISR[0]   : 0 = Interrupt pending, 1 = No interrupt pending
 // ISR[2:1] : Interrupt Priority ID
@@ -403,9 +405,13 @@ always_comb begin
     if (line_status_int)      ISR = 8'b00000110; // Priority 1: Line Status Error
     else if (rx_data_int)     ISR = 8'b00000100; // Priority 2: RX Data Available
     else if (tx_empty_int)    ISR = 8'b00000010; // Priority 3: TX Empty
+    else if (modem_status_int)    ISR = 8'b00000000; // Priority 4: Modem status change
     else                      ISR = 8'b00000001; // Default   : No Interrupt
 end
 
+// Master interrupt output sent to CPU
+assign irq_o = !ISR[0];
+    
 /***FIFO MANAGEMENT**/
 
 // FIFO Push (write) and Pop (read) logic
