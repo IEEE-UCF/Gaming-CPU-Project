@@ -45,10 +45,6 @@ module mem_stage #(
     output logic [DATA_WIDTH-1:0] cache_data_o,
     output logic cache_valid_o,      
     input  logic cache_ready_i, 
-
-    // Pipline Stall and Flush
-    input logic stall_i;
-    output logic flush_i;
      
 );
 
@@ -294,7 +290,4 @@ module mem_stage #(
     
     cache_miss_state_t cache_state, cache_state_next;
 
-
-
-    
 endmodule : mem_stage
