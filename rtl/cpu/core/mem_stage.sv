@@ -1,8 +1,9 @@
+// Code your design here
 `timescale 1ns / 1ps
 
 import rv32_pkg::*;
 
-module mem_stage #(
+module mem_stage (
 
     // Clock and Reset
     input logic clk_i,
@@ -27,7 +28,7 @@ module mem_stage #(
 
     // MMU Interface
     output logic mmu_access_o,
-    input logic mmu_ready_i
+    input logic mmu_ready_i,
     input logic mmu_page_fault_i,
     input logic mmu_access_fault_i,
 
@@ -45,6 +46,7 @@ module mem_stage #(
     output logic [DATA_WIDTH-1:0] cache_data_o,
     output logic cache_valid_o,      
     input  logic cache_ready_i, 
+
      
 );
 
@@ -54,13 +56,12 @@ module mem_stage #(
     logic mem_op_valid;
     logic mem_access_valid;
     logic cache_miss;
-    logic misaligned_error;
+    logic misalignment_error;
     logic store_operation;
     logic load_operation;
-    logic [ADDR_WIDTH-1:0] aligned_address;
+    logic [ADDR_WIDTH-1:0] aligned_addr;
     logic [DATA_WIDTH-1:0] store_data_reg;
     logic [1:0] size_reg;
-    logic sign_reg;
     logic sign_reg;
     logic is_load_reg;
     logic is_store_reg;
@@ -248,7 +249,7 @@ module mem_stage #(
                     load_data = dc_rsp_i;
                 end
                 default: begin
-                    load_data: '0;
+                    load_data = '0;
                 end
             endcase
         end
