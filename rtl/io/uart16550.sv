@@ -20,7 +20,7 @@ module UARTmodule(
 input wire clk_i,
 
 //reset signal to initialize/clear registers
-input wire rst_ni,
+input wire rst_n,
 
 //Axi-lite bus interface
 input  wire [31:0] CPU_to_UART, 
@@ -64,11 +64,11 @@ output wire irq_o
     logic [7:0] RHR; //Reciever Holding Register
     logic [7:0] THR;//Transmitter Holding Register
     logic [7:0] IER; //Interrupt Enable Register 
-    logic [7:0] ISR; //FIFO Control Register
-    logic [7:0] FCR; //Line Control Register
+    logic [7:0] ISR; //Interrupt Status Register
+    logic [7:0] FCR; //FIFO Control Register
     logic [7:0] LCR; //Line Control Register
-    logic [7:0] LSR; //Modem Control Register
-    logic [7:0] MCR; //Line Status Register
+    logic [7:0] LSR; //Line Status Register
+    logic [7:0] MCR; //Modem Control Register
     logic [7:0] MSR; //Modem Status Register
     logic [7:0] SPR; //Scratch Pad Register
     logic [7:0] DLL; //Divisor Latch Least signif byte
@@ -83,12 +83,11 @@ output wire irq_o
     logic fifo_empty = (count == 0);
 
 /****************************CONFIG REGS*******************************/
-    always_ff @(posedge clk or negedge rst) begin
-        if (!rst) begin //reset registers to its reset values
-            RHR <= 8'h00;
+  always_ff @(posedge clk_i or negedge rst_n) begin
+    if (!rst_n) begin //reset registers to its reset values
             THR <= 8'h00;
             IER <= 8'h00;
-            ISR <= 8'h01;
+            // ISR is combinatorial, removed from reset to avoid MULTIDRIVEN
             FCR <= 8'h00; //the datasheet reset value is 0x00? 
             LCR <= 8'h00;
             LSR <= 8'h60;
@@ -103,8 +102,8 @@ output wire irq_o
             if  (awvalid && wvalid && awready && wready) begin 
                 case (awaddr) //address of the register
                     3'b000: begin 
-                        if (LCR[7]==1'b0)// check DLAB = 0 -> RHR, DLAB = 1 -> DLL
-                            RHR <= wdata; // write data to be transmitted
+                        if (LCR[7]==1'b0)// check DLAB = 0 -> THR, DLAB = 1 -> DLL
+                            THR <= wdata; // write data to be transmitted (Changed from RHR to THR)
                         else
                             DLL <= wdata; // baudrate low byte
                     end
@@ -122,6 +121,7 @@ output wire irq_o
                             PSD <= {4'b0000, wdata[3:0]}; //prescaler division
                     end
                     3'b111: SPR <= wdata; // Scratch Pad 
+                    default: ; // Added to resolve CASEINCOMPLETE warning
                 endcase
             end
         end
@@ -137,8 +137,8 @@ output wire irq_o
     logic [3:0] multi_by_16;         //divides by 16
     logic baud_tick;                 //final baud pulse
     
-    always_ff @(posedge clk or negedge rst) begin 
-        if (!rst) begin //reseting the counter
+  always_ff @(posedge clk_i or negedge rst_n) begin 
+    if (!rst_n) begin //reseting the counter
             PSD_counter <= 4'd0;
             divisor_counter <= 16'd0;
             multi_by_16 <= 4'd0;
@@ -154,7 +154,7 @@ output wire irq_o
                     divisor_counter <= 16'd0;
                 
                      if (multi_by_16 == 4'd15) begin // divide by 16 
-                        multi_by_16 <= 16'd0;
+                        multi_by_16 <= 4'd0; // Fixed width from 16'd0 to 4'd0
                         baud_tick <= 1'b1; 
                     end 
                     else begin 
@@ -167,17 +167,13 @@ output wire irq_o
                 end
                 end// end the second inner if statment
             
-             else begin               
+             else begin                
                 PSD_counter <= PSD_counter + 1'b1;
             end     
             end //end the last if statment
      end
 
 /***************************TRANSMIT tx_o******************************/
-// It expects clk, rst, DLM, DLL, fifo_data_out, fifo_empty,
-// tx_o, and fifo_rd_en to already be declared.
-
-// 1. Transmit State Machine
 typedef enum logic [1:0] {
     IDLE      = 2'b00,  // Line idle (high)
     START_BIT = 2'b01,  // Send start bit (0)
@@ -191,14 +187,13 @@ logic [7:0] tx_shift_reg;
 logic [2:0] tx_bit_counter; 
 
 // 2. Baud Rate Generator (creates 1-cycle pulse per bit)
-wire [15:0] baud_divisor = {DLM, DLL};
 wire [31:0] rate_limit = (baud_divisor == 16'd0) ? 32'd1 : {16'd0, baud_divisor};
 
 reg  [31:0] clk_counter;
 logic       tx_bit_clk_en;  
 
-always_ff @(posedge clk or posedge rst) begin
-    if (rst) begin
+  always_ff @(posedge clk_i or negedge rst_n) begin
+    if (!rst_n) begin // Fixed polarity for consistency
         clk_counter   <= 32'd0;
         tx_bit_clk_en <= 1'b0;
     end
@@ -222,13 +217,18 @@ typedef enum logic {
 
 rd_state_e rd_state_c;
 
-logic [7:0] fifo_data_reg;   
+logic [7:0] fifo_data_reg;
+logic [7:0] fifo_data_out;
 logic       fifo_data_valid; 
+logic       fifo_rd_en; // Added read enable back
+
+// Wire up the output from the FIFO
+assign fifo_data_out = fifo_mem[raddr_ptr];
 
 wire fifo_data_consumed = (tx_state_c == START_BIT) && tx_bit_clk_en;
 
-always_ff @(posedge clk or posedge rst) begin
-    if (rst) begin
+  always_ff @(posedge clk_i or negedge rst_n) begin
+  if (!rst_n) begin // Fixed polarity for consistency
         rd_state_c      <= RD_IDLE;
         fifo_rd_en      <= 1'b0;
         fifo_data_reg   <= 8'd0;
@@ -240,7 +240,7 @@ always_ff @(posedge clk or posedge rst) begin
         case (rd_state_c)
             RD_IDLE: begin
                 if ((tx_state_c == IDLE) && (!fifo_empty) && (!fifo_data_valid)) begin
-                    fifo_rd_en <= 1'b1;
+                    fifo_rd_en <= 1'b1; // Replaced array assignment
                     rd_state_c <= RD_WAIT;
                 end
 
@@ -261,8 +261,8 @@ always_ff @(posedge clk or posedge rst) begin
 end
 
 // 4. State + Shift Logic
-always_ff @(posedge clk or posedge rst) begin
-    if (rst) begin
+  always_ff @(posedge clk_i or negedge rst_n) begin
+  if (!rst_n) begin // Fixed polarity for consistency
         tx_state_c     <= IDLE;
         tx_shift_reg   <= 8'b0;
         tx_bit_counter <= 3'd0;
@@ -324,15 +324,11 @@ assign tx_o =
     (tx_state_c == DATA_BITS) ? tx_shift_reg[0] :
     1'b1;
 
-
-/***************************RECEIVE rx_i*******************************/
-// Serial input -> shift register -> FIFO
-
 /***************************UART to CPU********************************/
 // AXI-Lite read/write response
 // RHR, RBR, FIFO status, line status
-    always_ff @(posedge clk or negedge rst) begin //aready logic --Is UART ready to read from an address? 
-        if (!rst) begin
+  always_ff @(posedge clk_i or negedge rst_n) begin //aready logic --Is UART ready to read from an address? 
+      if (!rst_n) begin
             arready <= 1'b1; // Ready out of reset
         end else begin
             if (arvalid && arready) begin
@@ -343,16 +339,16 @@ assign tx_o =
         end
     end
 
-    always_ff @(posedge clk or negedge rst) begin //rvalid logic --Is the data in rdata and rresp valid? 
-        if (!rst) begin
+  always_ff @(posedge clk_i or negedge rst_n) begin //rvalid logic --Is the data in rdata and rresp valid? 
+    if (!rst_n) begin
             rvalid <= 1'b0;
-            rdata  <= 32'h0;
+            rdata  <= 8'h0; // Fixed width from 32'h0 to 8'h0
         end else begin
             // Start the read after the address handshake
             if (arvalid && arready) begin
                 rvalid <= 1'b1;
                 // Decode the address to get the data
-                case (araddr[4:2]) // 16550 registers are often word-aligned
+                case (araddr) // Fixed SELRANGE (was araddr[4:2] on a 3-bit wire)
                     3'b000: rdata <= RHR;
                     3'b001: rdata <= IER;
                     3'b010: rdata <= ISR;
@@ -370,38 +366,55 @@ assign tx_o =
         end
     end
 
-    always_ff @(posedge clk) begin //rresp logic
+  always_ff @(posedge clk_i) begin //rresp logic
         if (arvalid && arready) begin
-            // If address is within 0-7, it's OKAY. Otherwise, SLVERR.
-            if () begin 
-                rresp <= 2'b00; // OKAY
-            end else begin
-                rresp <= 2'b10; // SLVERR (Address out of range)
-            end
+            // Removed redundant bounds check (awaddr is 3 bits, so it's always <= 7)
+            rresp <= 2'b00; // OKAY
         end
     end
 
 
 /***************************INTERRUPT irq_o****************************/
-// RX/TX interrupts based on IER and FIFO/line status
+// Internal interrupt trigger signals
+logic rx_data_int;
+logic tx_empty_int;
+logic line_status_int;
 
+// IER[0]: Enable Received Data Available Interrupt
+// IER[1]: Enable Transmitter Holding Register Empty Interrupt
+// IER[2]: Enable Receiver Line Status Interrupt (Errors)
+
+// 1. Data available in RX FIFO
+assign rx_data_int = IER[0] & (!fifo_empty); 
+
+// 2. Transmit FIFO is empty and state machine is idle
+assign tx_empty_int = IER[1] & (count == 0 && tx_state_c == IDLE); 
+
+// 3. Any error bit (Overrun, Parity, Framing, Break) is set in the LSR
+assign line_status_int = IER[2] & (|LSR[4:1]); 
+
+// Master interrupt output sent to CPU
+assign irq_o = rx_data_int | tx_empty_int | line_status_int;
+
+// Update Interrupt Status Register (ISR) for the CPU to read
+// ISR[0]   : 0 = Interrupt pending, 1 = No interrupt pending
+// ISR[2:1] : Interrupt Priority ID
+always_comb begin
+    if (line_status_int)      ISR = 8'b00000110; // Priority 1: Line Status Error
+    else if (rx_data_int)     ISR = 8'b00000100; // Priority 2: RX Data Available
+    else if (tx_empty_int)    ISR = 8'b00000010; // Priority 3: TX Empty
+    else                      ISR = 8'b00000001; // Default   : No Interrupt
+end
 
 /***FIFO MANAGEMENT**/
-// Internal FIFO memory, pointers, and counter
-localparam ADDR_WIDTH = $clog2(FIFO_DEPTH);
-logic [7:0] fifo_mem [0:FIFO_DEPTH-1];
-logic [ADDR_WIDTH-1:0] waddr_ptr;
-logic [ADDR_WIDTH-1:0] raddr_ptr;
-logic [ADDR_WIDTH:0] count;
-logic fifo_full  = (count == FIFO_DEPTH);
-logic fifo_empty = (count == 0);
 
 // FIFO Push (write) and Pop (read) logic
-always_ff @(posedge clk or posedge rst) begin
-    if (rst) begin
+always_ff @(posedge clk_i or negedge rst_n) begin // <--- Changed to negedge rst_n
+    if (!rst_n) begin                             // <--- Changed to active-low check
         waddr_ptr <= 0;
         raddr_ptr <= 0;
         count <= 0;
+        RHR <= 8'h00;                             // <--- ADDED RHR RESET HERE
     end
     else begin
         // Push data to FIFO (CPU write)
@@ -411,9 +424,9 @@ always_ff @(posedge clk or posedge rst) begin
             count <= count + 1;             // Increment FIFO count
         end
 
-        // Pop data from FIFO (CPU read)
-        if (rready && arvalid && !fifo_empty) begin
-            RBR <= fifo_mem[raddr_ptr];     // Load data to read register
+        // Pop data from FIFO (CPU read or Internal State Machine Read)
+        if ((rready && arvalid && !fifo_empty) || (fifo_rd_en && !fifo_empty)) begin
+            RHR <= fifo_mem[raddr_ptr];     // Load data to read register
             raddr_ptr <= raddr_ptr + 1;     // Increment read pointer
             count <= count - 1;             // Decrement FIFO count
         end
@@ -422,5 +435,49 @@ end
 
 
 /***************************ERROR DETECTION***************************/
-// Parity, framing, overrun errors
+// Note: These signals should be driven by the RX State Machine (Receive_rx)
+logic rx_done;            // Pulses high for 1 clock cycle when a full frame is received
+logic rx_stop_bit;        // The actual value of the sampled stop bit
+logic rx_parity_calc;     // The calculated parity of the incoming data
+logic rx_parity_sampled;  // The actual parity bit sampled from the rx_i line
+logic rx_break_detect;    // Pulses high if rx_i is held low for longer than a full frame
+
+always_ff @(posedge clk_i or negedge rst_n) begin
+    if (!rst_n) begin
+        // Reset Line Status Register (LSR[6:5] = 1 means TX is completely empty)
+        LSR <= 8'h60;
+    end 
+    else begin
+        // 1. Overrun Error (LSR[1]): New data arrived but FIFO is completely full
+        if (rx_done && fifo_full) begin
+            LSR[1] <= 1'b1;
+        end
+
+        // 2. Parity Error (LSR[2]): Parity doesn't match (Only if LCR[3] Parity Enable is 1)
+        if (rx_done && LCR[3] && (rx_parity_calc != rx_parity_sampled)) begin
+            LSR[2] <= 1'b1;
+        end
+
+        // 3. Framing Error (LSR[3]): Expected a stop bit (1), but got a 0
+        if (rx_done && (rx_stop_bit == 1'b0)) begin
+            LSR[3] <= 1'b1;
+        end
+
+        // 4. Break Interrupt (LSR[4]): RX line held low for an entire word duration
+        if (rx_break_detect) begin
+            LSR[4] <= 1'b1;
+        end
+
+        // Clear error bits when the CPU successfully reads the LSR
+        // Fixed SELRANGE (was araddr[4:2] on a 3-bit wire)
+        if (arvalid && arready && (araddr == 3'b101)) begin
+            LSR[4:1] <= 4'b0000;
+        end
+
+        // Continuously update status flags
+        LSR[0] <= !fifo_empty;                        // Data Ready (DR)
+        LSR[5] <= (count == 0);                       // Transmit Holding Register Empty (THRE)
+        LSR[6] <= (count == 0 && tx_state_c == IDLE); // Transmitter Empty (TEMT)
+    end
+end
 endmodule
