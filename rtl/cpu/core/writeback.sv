@@ -140,14 +140,14 @@ module wb_stage (
                 rd_we_o = 1'b0; // x0 is hardwired to 0
             end
         end
+    end
 
-        // Check with Adrian about division by zero flag
-        always_ff @(posedge clk_i) begin
-            if (zero_division_exception_i) begin
-                divide_flag_o <= 1'b1; // Set divide flag on division by zero exception
-            end else begin
-                divide_flag_o <= 1'b0; // Clear it otherwise
-            end
+    // Check with Adrian about division by zero flag
+    always_ff @(posedge clk_i) begin
+        if (zero_division_exception_i) begin
+            divide_flag_o <= 1'b1; // Set divide flag on division by zero exception
+        end else begin
+            divide_flag_o <= 1'b0; // Clear it otherwise
         end
     end
 
@@ -181,7 +181,6 @@ module wb_stage (
         if (current_state == WB_EXCEPTION) begin // If we're in the exception state, signal a trap and flush the pipeline
             trap_o = 1'b1; 
             pipeline_flush_o = 1'b1; 
-            // Change to one If Statement
         end else if (current_state == WB_COMMIT && wb_exception_pending_reg) begin // If exception pending, signal a trap and flush on commit
             trap_o = 1'b1; 
             pipeline_flush_o = 1'b1; 

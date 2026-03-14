@@ -1,4 +1,3 @@
-// Code your design here
 `timescale 1ns / 1ps
 
 import rv32_pkg::*;
@@ -39,6 +38,7 @@ module mem_stage (
     output logic mem_stall_o,
     output logic mem_exception_o,
     output logic [1:0] mem_exception_type_o,
+    output logic mem_state_o
 
     // Cache Control Interface
     output logic cache_write_o,   
@@ -46,7 +46,6 @@ module mem_stage (
     output logic [DATA_WIDTH-1:0] cache_data_o,
     output logic cache_valid_o,      
     input  logic cache_ready_i, 
-
      
 );
 
@@ -66,7 +65,7 @@ module mem_stage (
     logic is_load_reg;
     logic is_store_reg;
     logic [DATA_WIDTH-1:0] address_reg;
-    logic bubble;
+    logic byte_enable [3:0];
     // Reference Regisers (Please Ignore)
     // logic [ADDR_WIDTH-1:0] miss_addr_reg; // Original address that caused miss
     // logic [DATA_WIDTH-1:0] miss_data_reg; // Data from memory for cache write
@@ -85,10 +84,6 @@ module mem_stage (
 
     mem_state_t current_state, next_state;
 
-    //
-    // Stall Logic 
-    //
-    assign mm_stall_o = ls_ctrl_mem_en_i & ex_valid_i & ~mem_response_valid & ~exception_pending & ~flush_i;
 
     //
     // Reset/Initialization
@@ -106,7 +101,7 @@ module mem_stage (
         end else begin
             current_state <= next_state;
 
-            if (mem_state == MEM_IDLE && (ls_ctrl_load_i || ls_ctrl_store_i)) begin // Register Inputs at Start
+            if (mem_state_o == MEM_IDLE && (ls_ctrl_load_i || ls_ctrl_store_i)) begin // Register Inputs at Start
                 address_reg <= ex_res_i;
                 store_data_reg <= ex_res_i; // Assuming data is in ex_res_i for stores
                 size_reg <= ls_ctrl_size_i;
@@ -115,7 +110,7 @@ module mem_stage (
                 is_store_reg <= ls_ctrl_store_i;
             end
 
-            if (mem_state == MEM_COMPLETE && !mem_exception_o) begin // Update writeback data upon completion
+            if (mem_state_o == MEM_COMPLETE && !mem_exception_o) begin // Update writeback data upon completion
                 if (is_load_reg && dc_rsp_i) begin
                     wb_data_o <= load_data;
                 end else begin
