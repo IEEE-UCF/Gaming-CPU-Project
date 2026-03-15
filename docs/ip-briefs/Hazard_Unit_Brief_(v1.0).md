@@ -5,7 +5,7 @@
 
 #### **Purpose & Role**
 
-The Hazard Unit is the pipeline control and data forwarding subsystem for the 5-stage RISC-V CPU. It operates combinationally detect and resolve pipeline hazards:
+The Hazard Unit is the pipeline control and data forwarding subsystem for the 5-stage RISC-V CPU. It combinationally detects and resolves pipeline hazards:
 - Data hazard detection: Load-use dependencies, multi-cycle ALU operation (divide)
 - Control hazard detection: Illegal instructions
 - Data forwarding: Bypass results from EX/MM and MM/WB directly to operands, eliminating unnecessary stalls
