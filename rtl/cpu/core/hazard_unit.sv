@@ -11,12 +11,10 @@ module hazard_unit (
     // EX/MM
     input logic [DATA_WIDTH-1:0] ex_mm_rd_i,
     input reg_ex_we,    
-    input logic ex_result_i,
 
     // MM/WB
     input logic [DATA_WIDTH-1:0] mm_wb_rd_i,
-    input reg_mm_we,   // Also used in hazard detection unit
-    input logic wb_result_i,    // Also used in hazard detection unit
+    input reg_mm_we,  
 
     // Forwarding MUX 
     input logic [DATA_WIDTH-1:0] ex_result_i,
@@ -28,23 +26,28 @@ module hazard_unit (
     input logic alu_src_i, // 0 = rs2, 1 = imm
 
     // Hazard Detection Unit
-    input logic [DATA_WIDTH-1:0] instr_i,  
+    input logic trap_i, // From EX/MM 
+    input logic alu_stall_i, 
+    input logic ex_mm_load_i,
+    input logic [2:0] ex_mm_fu_i, 
+
     output logic if_id_we_o,    // IF/ID pipeline register write enable 
     output logic pc_we_o,   // PC write enable 
-    output logic cu_select_stall_o,   // Control Unit select (0 = normal, 1 = stall)
+    output logic cu_flush_o, // Control flush signal 
+    output logic cu_stall_o // Control stall signal
 
 );
 
     // Forwarding controls (EX stage muxes)
     // ID/EX = 00, EX/MM = 10, MM/WB = 01
-    logic [1:0] forward_a, 
-    logic [1:0] forward_b,
+    logic [1:0] forward_a;
+    logic [1:0] forward_b;
 
     // Forwarding Unit
     always_comb begin 
         // rs1:
         if (reg_ex_we && (ex_mm_rd_i == id_ex_rs1_i)) begin // Check with EX/MM rd
-            orward_a = 2'b10;
+            forward_a = 2'b10;
         end else if (reg_mm_we && (mm_wb_rd_i == id_ex_rs1_i)) begin  // Check with MM/WB rd
                 forward_a = 2'b01;
             end
@@ -81,6 +84,29 @@ module hazard_unit (
     end
 
     // Hazard Detection Unit
+    logic load_hazard; 
+    assign load_hazard = ex_mm_load_i && ((ex_mm_rd_i == id_ex_rs1_i) || (ex_mm_rd_i == id_ex_rs2_i)); 
 
+    logic alu_hazard;
+    assign alu_hazard = alu_stall_i && (ex_mm_fu_i == FU_DIV) && alu_stall_i; // Check if divider is busy and EX/MM is a division instruction
+
+    always_comb begin
+        cu_flush_o = 1'b0;
+        cu_stall_o = 1'b0;
+        if_id_we_o = 1'b1;
+        pc_we_o = 1'b1;
+    
+        // Trap handles illegal instructions by flush
+        if (trap_i) begin
+            cu_flush_o = 1'b1;    // Flush
+        end
+        
+        // Divider hazard handled by stall
+        else if (load_hazard || alu_hazard) begin
+            cu_stall_o = 1'b1;  // Stall 
+            if_id_we_o = 1'b0;  // Stall IF/ID
+            pc_we_o = 1'b0; // Stall PC 
+        end
+    end
 
 endmodule 
