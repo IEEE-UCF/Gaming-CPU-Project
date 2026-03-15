@@ -17,6 +17,10 @@ The Hazard Unit is the pipeline control and data forwarding subsystem for the 5-
 - Parameters in Verilog/SystemVerilog are similar to constants and #define directives seen in C/C++ that are reused many times across a module to avoid magic numbers and promote reusability
 - Note: Inherited from `rv32_pkg.sv` and `rv32_core` top-level
 
+| Name        | Default | Description                                          |
+|-------------|---------|------------------------------------------------------|
+| DATA_WIDTH  | 32      | Operand width                                        |
+
 ---
 
 #### **Interfaces (Ports)**
