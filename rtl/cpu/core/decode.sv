@@ -14,7 +14,7 @@ module decode (
   output logic [DATA_WIDTH-1:0] rf_b_o,
 
   // Illegal Instruction (Control Hazard)
-  output logic control_hazard_o,
+  output logic trap_o,
 
   // Execute Inputs (includes rf_a_o and rf_b_o)
   output rv32_ctrl_s ctrl_o, 
@@ -136,7 +136,7 @@ module decode (
       OPCODE_OP_IMM: begin
         ctrl_sig_n.alu_src = 1'b1;
         ctrl_sig_n.reg_wb = 1'b1;
-        fu_select_n = FU_ALU;
+        fu_selec_n = FU_ALU;
         imm_n = imm_i_type;
         unique case (funct3)
           3'b000: ctrl_sig_n.alu_op = ALU_ADD; // ADDI
@@ -145,7 +145,7 @@ module decode (
           3'b100: ctrl_sig_n.alu_op = ALU_XOR; // XORI
           3'b110: ctrl_sig_n.alu_op = ALU_OR; // ORI
           3'b111: ctrl_sig_n.alu_op = ALU_AND; // ANDI
-          3'b001 begin:
+          3'b001: begin
             if (funct7 == 7'b0000000)
               imm_n = {{27{1'b0}}, shamt}; // Shamt for shift
               ctrl_sig_n.alu_op = ALU_SLL; // SLLI
@@ -172,7 +172,7 @@ module decode (
         ctrl_sig_n.alu_src = 1'b1;
         ctrl_sig_n.alu_op = ALU_ADD; // ADD
         ctrl_sig_n.mem_write = 1'b1;
-        fu_select_n = FU_LSU;
+        fu_selec_n = FU_LSU;
         unique case (funct3)
           3'b000: ctrl_sig_n.mem_size = 2'b00; // SB
           3'b001: ctrl_sig_n.mem_size = 2'b01; // SH
@@ -401,14 +401,10 @@ module decode (
   assign fence_o = fence;
 
   // Illegal Instruction Output
-  assign control_hazard_o = illegal_instr;
+  assign trap_o = illegal_instr;
 
   assign rf_a_o = rf_a_i;
   assign rf_b_o = rf_b_i;
-
-    // NOTES:
-    // ALU src rs2/imm value mux (in hazard_unit)
-    // control signals to ex
     
 endmodule
 
