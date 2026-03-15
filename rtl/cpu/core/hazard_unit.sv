@@ -62,8 +62,8 @@ module hazard_unit (
 
     // Forwading MUX 
     always_comb begin
-        op_a_o = 2'b00;
-        op_b_o = 2'b00;
+        op_a_o = '0;
+        op_b_o = '0;
 
         unique case (forward_a)
             2'b10: op_a_o = ex_result_i;    // Forward from EX/MM
