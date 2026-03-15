@@ -84,10 +84,13 @@ package rv32_pkg;
     logic [4:0] alu_op; // ALU operation code 
     logic mem_read; // Memory read enable (to load)
     logic mem_write;  // Memory write enable (to store)
-    logic mem_size; // Memory access size (00 = byte, 01 = halfword, 10 = word)
+    logic [1:0] mem_size; // Memory access size (00 = byte, 01 = halfword, 10 = word)
     logic branch; // Branch instruction
     logic jump; // Jump instruction
     logic fence;  // Fence instruction
+    logic fence_i;  // Fence.I instruction
+    logic [3:0] pred; // Fence predecessor 
+    logic [3:0] succ; // Fence successor
     logic ecall;  // ECALL instruction
     logic ebreak; // EBREAK instruction
     logic csr;  // CSR instruction

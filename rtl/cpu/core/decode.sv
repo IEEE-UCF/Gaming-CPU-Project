@@ -21,14 +21,10 @@ module decode (
   output logic [DATA_WIDTH-1:0] imm_o,
   output fu_selec_e fu_selec_o, 
 
-  output logic [3:0] pred_o, 
-  output logic [3:0] succ_o,
-  output logic fence_o,
-
   // AMO Outputs
   output logic amo_aq_o,
   output logic amo_rl_o,
-  output amo_op_e amo_op_o
+  output amo_op_e amo_op_o,
 
   // Instruction 
   input logic [DATA_WIDTH-1:0] instr_i
@@ -43,9 +39,6 @@ module decode (
   logic [4:0] rs2;    // Source Register 2
   logic [6:0] funct7;
   logic [4:0] shamt;  // Shift Instruction
-  logic [3:0] pred; // Fence (predecessor)
-  logic [3:0] succ; // Fence (successor)
-  logic fence; // Fence instruction flag
 
   assign opcode = instr_i[6:0];
   assign rd     = instr_i[11:7];
@@ -54,8 +47,6 @@ module decode (
   assign rs2    = instr_i[24:20];
   assign funct7 = instr_i[31:25];
   assign shamt = instr_i [24:20];
-  assign pred = instr_i[27:24]; // Input/Output/Read/Write before fence
-  assign succ = instr_i[23:20]; // Input/Output/Read/Write after fence
 
   // Immediate Types
   logic [DATA_WIDTH-1:0] imm_i_type;
@@ -110,7 +101,6 @@ module decode (
     amo_op_n = AMO_NONE;
     amo_aq_n = 1'b0;
     amo_rl_n = 1'b0;
-    fence = 1'b0;
     illegal_instr = 1'b0;
 
     unique case (opcode)
@@ -120,7 +110,7 @@ module decode (
         ctrl_sig_n.alu_src = 1'b1; 
         ctrl_sig_n.alu_op = ALU_ADD; // ADD
         ctrl_sig_n.mem_read = 1'b1; 
-        ctrl_sig_n.reg_wb = 1'b1;
+        ctrl_sig_n.reg_mm_we = 1'b1;
         fu_selec_n = FU_LSU; 
         unique case (funct3) 
           3'b000: ctrl_sig_n.mem_size = 2'b00; // LB
@@ -135,7 +125,7 @@ module decode (
       // ALU Immediate (I-Type)
       OPCODE_OP_IMM: begin
         ctrl_sig_n.alu_src = 1'b1;
-        ctrl_sig_n.reg_wb = 1'b1;
+        ctrl_sig_n.reg_ex_we = 1'b1;
         fu_selec_n = FU_ALU;
         imm_n = imm_i_type;
         unique case (funct3)
@@ -146,20 +136,20 @@ module decode (
           3'b110: ctrl_sig_n.alu_op = ALU_OR; // ORI
           3'b111: ctrl_sig_n.alu_op = ALU_AND; // ANDI
           3'b001: begin
-            if (funct7 == 7'b0000000)
+            if (funct7 == 7'b0000000) begin
               imm_n = {{27{1'b0}}, shamt}; // Shamt for shift
               ctrl_sig_n.alu_op = ALU_SLL; // SLLI
-            else 
+            end else 
               illegal_instr = 1'b1;
           end
           3'b101: begin
-            if (funct7 == 7'b0000000)
+            if (funct7 == 7'b0000000) begin
               imm_n = {{27{1'b0}}, shamt}; // Shamt for shift
               ctrl_sig_n.alu_op = ALU_SRL; // SRLI
-            else if (funct7 == 7'b0100000)
+            end else if (funct7 == 7'b0100000) begin
               imm_n = {{27{1'b0}}, shamt}; // Shamt for shift
               ctrl_sig_n.alu_op = ALU_SRA; // SRAI
-            else
+            end else
               illegal_instr = 1'b1;
           end
           default: illegal_instr = 1'b1; 
@@ -184,7 +174,7 @@ module decode (
       // Register-Register ALU (R-Type)
       OPCODE_OP: begin
         ctrl_sig_n.alu_src = 1'b0;
-        ctrl_sig_n.reg_wb = 1'b1;
+        ctrl_sig_n.reg_ex_we = 1'b1;
         fu_selec_n = FU_ALU; 
         // M Extension 
         if (HAS_M && (funct7 == 7'b0000001)) begin
@@ -232,7 +222,7 @@ module decode (
         imm_n = imm_u_type;
         ctrl_sig_n.alu_src = 1'b1;
         ctrl_sig_n.alu_op = ALU_ADD; // ADD (PC + imm)
-        ctrl_sig_n.reg_wb = 1'b1;
+        ctrl_sig_n.reg_ex_we = 1'b1;
         ctrl_sig_n.auipc = 1'b1; // Signal to execute stage to use PC as operand A
         fu_selec_n = FU_ALU;
       end 
@@ -242,7 +232,7 @@ module decode (
         imm_n = imm_u_type;
         ctrl_sig_n.alu_src = 1'b1;
         ctrl_sig_n.alu_op = ALU_PASS; // Pass-through immediate
-        ctrl_sig_n.reg_wb = 1'b1;
+        ctrl_sig_n.reg_ex_we = 1'b1;
         fu_selec_n = FU_ALU;
       end
 
@@ -268,7 +258,7 @@ module decode (
       OPCODE_JAL: begin
         imm_n = imm_j_type;
         ctrl_sig_n.jump = 1'b1;
-        ctrl_sig_n.reg_wb = 1'b1;
+        ctrl_sig_n.reg_ex_we = 1'b1;
         fu_selec_n = FU_ALU;
       end 
 
@@ -276,7 +266,7 @@ module decode (
       OPCODE_JALR: begin
         imm_n = imm_i_type;
         ctrl_sig_n.jump = 1'b1;
-        ctrl_sig_n.reg_wb = 1'b1;
+        ctrl_sig_n.reg_ex_we = 1'b1;
         ctrl_sig_n.alu_src = 1'b1;
         ctrl_sig_n.alu_op = ALU_ADD; // ADD
         fu_selec_n = FU_ALU; 
@@ -299,27 +289,27 @@ module decode (
           end
           // CSR Instructions
           3'b001: begin // CSRRW
-            ctrl_sig_n.reg_wb = 1'b1;
+            ctrl_sig_n.reg_ex_we = 1'b1;
             imm_n = {20'b0, instr_i[31:20]};  // CSR address encoded in immediate field
           end
           3'b010: begin // CSRRS
-            ctrl_sig_n.reg_wb = 1'b1;
+            ctrl_sig_n.reg_ex_we = 1'b1;
             imm_n = {20'b0, instr_i[31:20]}; 
           end
           3'b011: begin // CSRRC
-            ctrl_sig_n.reg_wb = 1'b1;
+            ctrl_sig_n.reg_ex_we = 1'b1;
             imm_n = {20'b0, instr_i[31:20]}; 
           end
           3'b101: begin // CSRRWI
-            ctrl_sig_n.reg_wb = 1'b1;
+            ctrl_sig_n.reg_ex_we = 1'b1;
             imm_n = {27'b0, rs1}; // zimm[4:0] encoded in rs1 field
           end
           3'b110: begin // CSRRSI
-            ctrl_sig_n.reg_wb = 1'b1;
+            ctrl_sig_n.reg_ex_we = 1'b1;
             imm_n = {27'b0, rs1};
           end
           3'b111: begin // CSRRCI
-            ctrl_sig_n.reg_wb = 1'b1;
+            ctrl_sig_n.reg_ex_we = 1'b1;
             imm_n = {27'b0, rs1};
           end
           default: illegal_instr = 1'b1;
@@ -328,14 +318,14 @@ module decode (
 
       // Fence (I-Type)
       OPCODE_MISC_MEM: begin
+        ctrl_sig_n.pred = instr_i[27:24];
+        ctrl_sig_n.succ = instr_i[23:20];
         unique case (funct3)
           3'b000: begin // FENCE
           ctrl_sig_n.fence = 1'b1;
-          fence = 1'b1;
           end
           3'b001: begin // FENCE.I
-          ctrl_sig_n.fence = 1'b1;
-          fence = 1'b1;
+          ctrl_sig_n.fence_i = 1'b1;
           end 
           default: illegal_instr = 1'b1;
         endcase
@@ -346,7 +336,7 @@ module decode (
         if (HAS_A) begin
           ctrl_sig_n.mem_read = 1'b1;
           ctrl_sig_n.mem_write = 1'b1;
-          ctrl_sig_n.reg_wb = 1'b1;
+          ctrl_sig_n.reg_ex_we = 1'b1;
           fu_selec_n = FU_LSU;
           amo_aq_n = instr_i[26];
           amo_rl_n = instr_i[25];
@@ -396,9 +386,6 @@ module decode (
   assign amo_op_o = amo_op_n;
   assign amo_aq_o = amo_aq_n;
   assign amo_rl_o = amo_rl_n;
-  assign pred_o = pred;
-  assign succ_o = succ;
-  assign fence_o = fence;
 
   // Illegal Instruction Output
   assign trap_o = illegal_instr;
