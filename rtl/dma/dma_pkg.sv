@@ -45,4 +45,55 @@ package dma_pkg;
         logic [31:0] channel_enable;
     } dma_regs_t;
 
+    parameter logic [ADDR_W-1:0] REG_CTRL_OFFSET = 32'h0000_0000;
+    parameter logic [ADDR_W-1:0] REG_STATUS_OFFSET = 32'h0000_0004;
+    parameter logic [ADDR_W-1:0] REG_CHANNEL_ENABLE = 32'h0000_0008;
+    parameter logic [ADDR_W-1:0] REG_DESC_PTR_BASE = 32'h0000_0100;
+    parameter int CTRL_GLOBAL_ENABLE_BIT = 0;
+    parameter int CTRL_IRQ_ENABLE_BIT = 1;
+    parameter int STATUS_BUSY_BIT = 0;
+    parameter int STATUS_ERROR_BIT = 1;
+
+    typedef enum logic [1:0] {
+        IRQ_NONE = 2'b00,
+        IRQ_DONE = 2'b01,
+        IRQ_ERROR = 2'b10
+    } irq_type_e;
+
+    typedef struct packed {
+        channel_state_e state;
+        logic done;
+        logic error;
+    } ch_status_t;
+
+    typedef struct packed {
+        logic valid;         
+        logic [ADDR_W-1:0] addr;          
+    } desc_fetch_req_t;
+    typedef struct packed {
+        logic valid;              
+        dma_desc_t desc;                
+    } desc_fetch_resp_t;
+
+    typedef struct packed {
+        logic valid;         
+        logic [ADDR_W-1:0] src_addr;
+        logic [ADDR_W-1:0] dst_addr;
+        logic [23:0] length;
+        logic is_last;
+    } xfer_req_t;
+    typedef struct packed {
+        logic done;
+        logic error;
+    } xfer_resp_t;
+
+    parameter int unsigned MAX_BURST_BEATS = 16;
+    parameter int unsigned MAX_BURST_BYTES = MAX_BURST_BEATS * (DATA_W/8);
+
+    function automatic [7:0] calc_axi_len(input int unsigned bytes);
+        if (bytes > MAX_BURST_BYTES)
+            return MAX_BURST_BEATS - 1;
+        else
+            return (bytes / (DATA_W/8)) - 1;
+    endfunction
 endpackage
