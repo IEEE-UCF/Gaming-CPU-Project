@@ -38,14 +38,14 @@ module mem_stage (
     output logic mem_stall_o,
     output logic mem_exception_o,
     output logic [1:0] mem_exception_type_o,
-    output logic mem_state_o
+    output logic mem_state_o,
 
     // Cache Control Interface
     output logic cache_write_o,   
     output logic [ADDR_WIDTH-1:0] cache_tag_o,  
     output logic [DATA_WIDTH-1:0] cache_data_o,
     output logic cache_valid_o,      
-    input  logic cache_ready_i, 
+    input  logic cache_ready_i
      
 );
 
@@ -65,7 +65,8 @@ module mem_stage (
     logic is_load_reg;
     logic is_store_reg;
     logic [DATA_WIDTH-1:0] address_reg;
-    logic byte_enable [3:0];
+    logic [3:0] byte_enable;
+  
     // Reference Regisers (Please Ignore)
     // logic [ADDR_WIDTH-1:0] miss_addr_reg; // Original address that caused miss
     // logic [DATA_WIDTH-1:0] miss_data_reg; // Data from memory for cache write
