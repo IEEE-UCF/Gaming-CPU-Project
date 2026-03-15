@@ -39,10 +39,6 @@
 | amo_aq_o                 | Out       | 1     | Atomic memory acquire flag               |
 | amo_rl_o                 | Out       | 1     | Atomic memory release flag               |
 | amo_op_o                 | Out       | 4     | Atomic memory operation flag             |
-| pred_o                   | Out       | 4     | Fence predecessor                        |
-| succ_o				   | Out	   | 4	   | Fence successor						  |
-| fence_o				   | Out	   | 1	   | Fence instruction flag				      |
-
 
 ---
 #### **Reset/Init**
