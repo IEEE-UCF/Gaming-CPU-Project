@@ -39,24 +39,32 @@ module hazard_unit (
 );
 
     // Forwarding controls (EX stage muxes)
-    // ID/EX = 00, EX/MM = 10, MM/WB = 01
     logic [1:0] forward_a;
     logic [1:0] forward_b;
 
+    // Forwarding mux select parameters
+    localparam logic [1:0] FWD_RF = 2'b00;  // No forwarding, register file from ID/EX 
+    localparam logic [1:0] FWD_EX_MM = 2'b10;   // Forward from EX/MM 
+    localparam logic [1:0] FWD_MM_WB = 2'b01;   // Forward from MM/WB 
+
     // Forwarding Unit
     always_comb begin 
+        // Default
+        forward_a = FWD_RF; 
+        forward_b = FWD_RF;
+
         // rs1:
         if (reg_ex_we && (ex_mm_rd_i == id_ex_rs1_i)) begin // Check with EX/MM rd
-            forward_a = 2'b10;
+            forward_a = FWD_EX_MM;
         end else if (reg_mm_we && (mm_wb_rd_i == id_ex_rs1_i)) begin  // Check with MM/WB rd
-                forward_a = 2'b01;
+                forward_a = FWD_MM_WB;
             end
 
         // rs2:
         if (reg_ex_we && (ex_mm_rd_i == id_ex_rs2_i)) begin // Check with EX/MM rd
-            forward_b = 2'b10;
+            forward_b = FWD_EX_MM;
         end else if (reg_mm_we && (mm_wb_rd_i == id_ex_rs2_i)) begin  // Check with MM/WB rd
-                forward_b = 2'b01; 
+                forward_b = FWD_MM_WB; 
             end
     end
 
@@ -66,8 +74,8 @@ module hazard_unit (
         op_b_o = '0;
 
         unique case (forward_a)
-            2'b10: op_a_o = ex_result_i;    // Forward from EX/MM
-            2'b01: op_a_o = wb_result_i;    // Forward from MM/WB
+            FWD_EX_MM: op_a_o = ex_result_i;    // Forward from EX/MM
+            FWD_MM_WB: op_a_o = wb_result_i;    // Forward from MM/WB
             default: op_a_o = id_ex_rs1_i;  // No forwarding, use ID/EX rs1
         endcase
 
@@ -76,8 +84,8 @@ module hazard_unit (
             op_b_o = imm_i; // ALUSrc override for rs2 -> imm
         else begin
             unique case (forward_b)
-                2'b10: op_b_o = ex_result_i;    // Forward from EX/MM
-                2'b01: op_b_o = wb_result_i;    // Forward from MM/WB
+                FWD_EX_MM: op_b_o = ex_result_i;    // Forward from EX/MM
+                FWD_MM_WB: op_b_o = wb_result_i;    // Forward from MM/WB
                 default: op_b_o = id_ex_rs2_i;  // No forwarding, use ID/EX rs2 (overridden by ALUSrc MUX if imm)
             endcase
         end
