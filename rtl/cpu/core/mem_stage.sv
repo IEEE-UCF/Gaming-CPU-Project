@@ -1,9 +1,8 @@
 `timescale 1ns/1ps
-module mem_stage #(
-  parameter int unsigned ADDR_WIDTH = 32,
-  parameter int unsigned DATA_WIDTH = 32,
-  parameter int unsigned HAS_A = 1
-) ( 
+
+import rv32_pkg::*;
+
+module mem_stage ( 
   
   	// Clock and Reset
     input logic clk_i,
@@ -23,7 +22,7 @@ module mem_stage #(
 
     // Data Cache Interface
     output logic dc_req_o,
-  input logic [DATA_WIDTH-1:0] dc_rsp_i,
+    input logic [DATA_WIDTH-1:0] dc_rsp_i,
 
     // MMU Interface
     output logic mmu_access_o,
