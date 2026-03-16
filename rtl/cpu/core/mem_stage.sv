@@ -1,10 +1,11 @@
-`timescale 1ns / 1ps
-
-import rv32_pkg::*;
-
-module mem_stage (
-
-    // Clock and Reset
+`timescale 1ns/1ps
+module mem_stage #(
+  parameter int unsigned ADDR_WIDTH = 32,
+  parameter int unsigned DATA_WIDTH = 32,
+  parameter int unsigned HAS_A = 1
+) ( 
+  
+  	// Clock and Reset
     input logic clk_i,
     input logic rst_ni,
 
@@ -20,10 +21,9 @@ module mem_stage (
     input logic [DATA_WIDTH-31:0] ex_data_i,
     input logic ex_valid_i,
 
-
     // Data Cache Interface
     output logic dc_req_o,
-    input logic dc_rsp_i,
+  input logic [DATA_WIDTH-1:0] dc_rsp_i,
 
     // MMU Interface
     output logic mmu_access_o,
@@ -45,8 +45,7 @@ module mem_stage (
     output logic [ADDR_WIDTH-1:0] cache_tag_o,  
     output logic [DATA_WIDTH-1:0] cache_data_o,
     output logic cache_valid_o,      
-    input  logic cache_ready_i
-     
+    input  logic cache_ready_i 
 );
 
     // Internal Signals
@@ -65,8 +64,8 @@ module mem_stage (
     logic is_load_reg;
     logic is_store_reg;
     logic [DATA_WIDTH-1:0] address_reg;
-    logic [3:0] byte_enable;
-  
+    logic byte_enable [3:0];
+  	logic atomic_req_o;
     // Reference Regisers (Please Ignore)
     // logic [ADDR_WIDTH-1:0] miss_addr_reg; // Original address that caused miss
     // logic [DATA_WIDTH-1:0] miss_data_reg; // Data from memory for cache write
@@ -82,16 +81,15 @@ module mem_stage (
         MEM_WAIT_RESPONSE,
         MEM_COMPLETE
     } mem_state_t;
-
-    mem_state_t current_state, next_state;
-
+   
+  mem_state_t current_state, next_state;
 
     //
     // Reset/Initialization
     //
 
-    always_ff @(posedge clk_i or negedge rst_ni) begin // On reset, initialize all registers and signals
-        if (!rst_ni) begin
+  	always_ff @(posedge clk_i or negedge rst_ni) begin
+        if(!rst_ni) begin
             current_state <= MEM_IDLE;
             address_reg <= '0;
             store_data_reg <= '0;
@@ -102,9 +100,8 @@ module mem_stage (
         end else begin
             current_state <= next_state;
 
-            if (mem_state_o == MEM_IDLE && (ls_ctrl_load_i || ls_ctrl_store_i)) begin // Register Inputs at Start
+            if (mem_state_o == MEM_IDLE && (ls_ctrl_load_i || ls_ctrl_store_i)) begin 
                 address_reg <= ex_res_i;
-                store_data_reg <= ex_res_i; // Assuming data is in ex_res_i for stores
                 size_reg <= ls_ctrl_size_i;
                 sign_reg <= ls_ctrl_sign_i;
                 is_load_reg <= ls_ctrl_load_i;
@@ -119,7 +116,6 @@ module mem_stage (
                 end
             end
         end
-    end
 
     //
     // Memory Allignment 
@@ -162,9 +158,7 @@ module mem_stage (
             assign atomic_req_o = mem_access_valid && 
                                  ((ls_ctrl_load_i && ls_ctrl_store_i) || 
                                   (|ls_ctrl_size_i));
-            
             assign dc_req_o = mem_access_valid && !atomic_req_o && !cache_miss;
-            
         end else begin : no_atomic_support // If atomic NOT supported, simply pass through memory request signals without atomic check
             assign atomic_req_o = 1'b0;
             assign dc_req_o = mem_access_valid && !cache_miss;
@@ -270,6 +264,7 @@ module mem_stage (
                 mem_exception_type_o = 2'b11; // Access fault exception code
             end
         end
+    end
 
     //
     // Cache Miss Handling

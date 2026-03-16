@@ -78,4 +78,77 @@ package rv32_pkg;
     OPCODE_SYSTEM = 7'b1110011;
 */
 
+  // Decode: Control Signals
+  typedef struct packed { 
+    logic alu_src; // ALU source select (0 = rs2, 1 = imm)
+    logic [4:0] alu_op; // ALU operation code 
+    logic mem_read; // Memory read enable (to load)
+    logic mem_write;  // Memory write enable (to store)
+    logic mem_size; // Memory access size (00 = byte, 01 = halfword, 10 = word)
+    logic branch; // Branch instruction
+    logic jump; // Jump instruction
+    logic fence;  // Fence instruction
+    logic ecall;  // ECALL instruction
+    logic ebreak; // EBREAK instruction
+    logic csr;  // CSR instruction
+    logic auipc; // AUIPC instruction (use PC as operand A)
+    logic reg_ex_we;  // Register file write enable for EX stage result
+    logic reg_mm_we;  // Register file write enbale for MM stage result
+  } rv32_ctrl_s;
+
+  // Decode: Functional Unit Selection
+  typedef enum logic [2:0] {
+    FU_ALU = 3'd0,  // Arithmetic Logic Unit
+    FU_SHIFT = 3'd1,  // Shifter Unit
+    FU_LSU = 3'd2,  // Load Store Unit
+    FU_BRANCH = 3'd3, // Branch Unit
+    FU_MUL = 3'd4,  // Multiplier Unit
+    FU_DIV = 3'd5,  // Divider Unit
+    FU_CSR = 3'd6 // CSR Unit
+  } fu_selec_e;
+  
+  // Decode: Atomic Memory Operation (AMO) Codes
+  typedef enum logic [3:0] {
+    AMO_LR = 4'd0, // Load-Reserved
+    AMO_SC = 4'd1,  // Store-Conditional
+    AMO_SWAP = 4'd2,
+    AMO_ADD = 4'd3,
+    AMO_XOR = 4'd4,
+    AMO_AND = 4'd5,
+    AMO_OR = 4'd6,
+    AMO_MIN = 4'd7,
+    AMO_MAX = 4'd8,
+    AMO_MINU = 4'd9,
+    AMO_MAXU = 4'd10,
+    AMO_NONE = 4'd11 // No AMO
+  } amo_op_e;
+
+  // Decode: ALU Operation Codes
+  localparam logic [4:0]
+    ALU_BEQ = 5'b00001, // BEQ
+    ALU_BNE = 5'b00010, // BNE
+    ALU_BLT = 5'b00011, // BLT
+    ALU_BGE = 5'b00100, // BGE
+    ALU_BLTU = 5'b00101, // BLTU
+    ALU_BGEU = 5'b00110, // BGEU
+    ALU_ADD = 5'b00111, // ADD, ADDI
+    ALU_SLT = 5'b01000, // SLT, SLTI
+    ALU_SLTU = 5'b01001, // SLTU, SLTIU
+    ALU_XOR = 5'b01010, // XOR, XORI
+    ALU_OR = 5'b01011, // OR, ORI
+    ALU_AND = 5'b01100, // AND, ANDI
+    ALU_SLL = 5'b01101, // SLL, SLLI
+    ALU_SRL = 5'b01110, // SRL, SRLI
+    ALU_SRA = 5'b01111, // SRA, SRAI
+    ALU_SUB = 5'b10000, // SUB
+    ALU_MUL = 5'b10001, // MUL
+    ALU_MULH = 5'b10010, // MULH
+    ALU_MULHSU = 5'b10011, // MULHSU
+    ALU_MULHU = 5'b10100, // MULHU
+    ALU_DIV = 5'b10101, // DIV
+    ALU_DIVU = 5'b10110, // DIVU
+    ALU_REM = 5'b10111, // REM
+    ALU_REMU = 5'b11000, // REMU
+    ALU_PASS = 5'b11111; // Pass-through (LUI)
+
 endpackage : rv32_pkg
