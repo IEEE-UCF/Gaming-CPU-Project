@@ -10,11 +10,11 @@ module hazard_unit (
 
     // EX/MM
     input logic [DATA_WIDTH-1:0] ex_mm_rd_i,
-    input reg_ex_we,    
+    input logic reg_ex_we,    
 
     // MM/WB
     input logic [DATA_WIDTH-1:0] mm_wb_rd_i,
-    input reg_mm_we,  
+    input logic reg_mm_we,  
 
     // Forwarding MUX 
     input logic [DATA_WIDTH-1:0] ex_result_i,
@@ -88,7 +88,7 @@ module hazard_unit (
     assign load_hazard = ex_mm_load_i && ((ex_mm_rd_i == id_ex_rs1_i) || (ex_mm_rd_i == id_ex_rs2_i)); 
 
     logic alu_hazard;
-    assign alu_hazard = alu_stall_i && (ex_mm_fu_i == FU_DIV) && alu_stall_i; // Check if divider is busy and EX/MM is a division instruction
+    assign alu_hazard = alu_stall_i && (ex_mm_fu_i == FU_DIV); // Check if divider is busy and EX/MM is a division instruction
 
     always_comb begin
         cu_flush_o = 1'b0;
