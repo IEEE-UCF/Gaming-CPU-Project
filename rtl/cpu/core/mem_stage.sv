@@ -11,13 +11,13 @@ module mem_stage (
     // Load/Store Control
     input logic ls_ctrl_load_i,
     input logic ls_ctrl_store_i,
-    input logic ls_ctrl_size_i,
+    input logic [1:0] ls_ctrl_size_i,
     input logic ls_ctrl_sign_i,
     input logic ls_ctrl_write_en_i,
 
     // Execution Stage Results
     input logic [DATA_WIDTH-1:0] ex_res_i,
-    input logic [DATA_WIDTH-31:0] ex_data_i,
+    input logic [DATA_WIDTH-1:0] ex_data_i,
     input logic ex_valid_i,
 
     // Data Cache Interface
@@ -63,7 +63,7 @@ module mem_stage (
     logic is_load_reg;
     logic is_store_reg;
     logic [DATA_WIDTH-1:0] address_reg;
-    logic byte_enable [3:0];
+    logic [3:0] byte_enable;
   	logic atomic_req_o;
     // Reference Regisers (Please Ignore)
     // logic [ADDR_WIDTH-1:0] miss_addr_reg; // Original address that caused miss
@@ -115,6 +115,7 @@ module mem_stage (
                 end
             end
         end
+    end
 
     //
     // Memory Allignment 
@@ -188,7 +189,7 @@ module mem_stage (
                             default: byte_enable = 4'b0000; // Invalid size, no bytes enabled
                         endcase
                     end
-                    2'b10: begin; // Word store
+                    2'b10: begin // Word store
                         byte_enable = 4'b1111; 
                     end
                 endcase
