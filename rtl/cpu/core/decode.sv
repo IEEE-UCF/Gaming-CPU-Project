@@ -395,7 +395,10 @@ module decode (
     
 endmodule
 
+//------------------------------------------------------------------------------------------------------------------------
+
 // Register File
+// EDAplayground testbench: https://edaplayground.com/x/dqch
 module register_file (
 
   // Clock 
