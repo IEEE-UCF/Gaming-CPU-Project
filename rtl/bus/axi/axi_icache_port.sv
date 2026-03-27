@@ -1,6 +1,7 @@
-import interconnect_pkg;
+// import interconnect_pkg;
 
 module axi_icache_port #(
+
   // System AXI Parameters
   parameter int unsigned AXI_ADDR_WIDTH = 32,
   parameter int unsigned AXI_DATA_WIDTH = 64,
@@ -18,23 +19,26 @@ module axi_icache_port #(
   // icache valid request and address
   input logic                             ic_req_valid_i,
   input logic[AXI_ADDR_WIDTH-1:0]         ic_addr_valid_i,
-  input logic
 
-  // icache 
+  // I$ miss logic
+  input logic                             icache_miss_ar,
+  input logic                             icache_miss,
 
 
   // axi address read signals
   output logic [AXI_ADDR_WIDTH-1:0]       axi_mem_ar_o,
   output logic axi_ar_valid_o, 
   input logic axi_ar_ready_i, 
+  output logic [AXI_ADDR_WIDTH-1:0]       ar_addr, 
   
 
-
   // axi read data signals
+  // TODO: figure out more needed parameters
   input logic axi_mem_r_i,
   input logic axi_r_ready_i, 
   input logic axi_r_valid_i,
   input logic [AXI_ADDR_WIDTH*4-1:0]      axi_mem_r_i,
+  input logic                             
 
   typedef enum [2:0] {
     IDLE,					  // Do nothing, wait for icache to miss
@@ -57,21 +61,22 @@ module axi_icache_port #(
 
 
   // state transition logic
+  // TODO: finish the state transition logic
   always_comb begin 
     next_state = current_state;
     case (current_state)
       IDLE: begin
-        if (conditions) next_state = AR_SEND;
+        if (icache_miss && ) next_state = AR_SEND;
 
       end
 
       AR_SEND: begin
-        if (conditions) next_state = R_COLLECT;
+        if () next_state = R_COLLECT;
 
       end
 
       R_COLLECT: begin
-        if (conditions) next_state = IDLE;
+        if () next_state = IDLE;
 
       end
     endcase
