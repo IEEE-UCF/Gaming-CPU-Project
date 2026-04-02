@@ -15,7 +15,6 @@ import rv32_pkg::*;
 module execute (
     input logic clk_i,  // Main clk input
     input logic rst_ni,  // Active-low asynchronous reset
-    input logic ctrl_i,  // Control signals to execute
     input logic [DATA_WIDTH-1:0] op_a_i,  // Register A operand (data) from RF
     input  logic  [DATA_WIDTH-1:0]         op_b_i, // Register B operand (data) or sign extended immediate 32'b values
     input logic [4:0] ALU_OP,
@@ -26,21 +25,15 @@ module execute (
 );
 
 
-  logic [DATA_WIDTH*2:0] MULTIPLY_REG;  // Used for M instructions
+  logic [(DATA_WIDTH*2)-1:0] MULTIPLY_REG;  // Used for M instructions
   logic [DATA_WIDTH-1:0] ALU_OUTPUT_COMB;  // used for combinational
 
 
-  always_ff @(posedge clk_i or negedge rst_ni) begin
-    if (rst_ni == 1'b0) alu_res_o <= 32'd0;
-    else begin
-      if (ctrl_i) alu_res_o <= ALU_OUTPUT_COMB;
-    end
-
-  end
+  assign alu_res_o = ALU_OUTPUT_COMB;
+  
 
   // Division interface
   logic Division_START;
-  logic Division_DONE;
   logic [DATA_WIDTH-1:0] divisor;  // numberator
   logic [DATA_WIDTH-1:0] dividend;  // denominator
   logic [DATA_WIDTH-1:0] quotient;  //result
@@ -49,6 +42,7 @@ module execute (
   logic sign_bit;  // used for fixing sign bit in division
   logic signed_overflow;  // internal signed overflow signal
 
+
   division DUT (
       .clk_i(clk_i),
       .rst_ni(rst_ni),
@@ -56,7 +50,6 @@ module execute (
       .dividend(dividend),
       .divisor(divisor),
       .remainder(remainder),
-      .Division_DONE(Division_DONE),
       .quotient(quotient),
       .stall_o(stall_o)
   );
@@ -126,19 +119,20 @@ module execute (
 
       end
 
-      ALU_MULHSU: begin  // Will return Signed(XLEN) x Unsigned(XLEN) upper bits
-        MULTIPLY_REG = $signed(op_a_i) *
-            (op_b_i);  // In the RISC-V spec, rs2 is multiplier, rs1 is multiplicand, im assuming rs1 is op_a_i and op_b_i is multiplicand
+      ALU_MULHSU: begin  // Will return Signed(XLEN) x Unsigned(XLEN) upper bit pattern 
+        // A and B here are sign extended and zero extended manually so no $signed casting as SystemVerilog will create unamigious multiplication result
+        MULTIPLY_REG = {{32{op_a_i[31]}},op_a_i} * {32'b0,op_b_i};  // In the RISC-V spec, rs2 is multiplier, rs1 is multiplicand, im assuming rs1 is op_a_i and op_b_i is multiplicand
         ALU_OUTPUT_COMB = MULTIPLY_REG[63:32];
-      end
+        // Naturally on paper we would not sign extend operands, but in Verilog, signed x unsigned behavior will create weird results so we have to sign extend and zero extend to 64 bits.
 
+      end
       ALU_MULHU: begin  // will return return unsigned x unsigned upper XLEN bits
         MULTIPLY_REG = op_a_i * op_b_i;
         ALU_OUTPUT_COMB = MULTIPLY_REG[63:32];
 
       end
 
-      ALU_DIVU: begin
+      ALU_DIVU: begin  // We need to make sure we cannot change operands while stalling
         dividend = op_a_i;
         divisor = op_b_i;
         Division_START = (op_b_i != 32'd0) ? 1'b1 : 1'b0;  // if no division by zero start division
