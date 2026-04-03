@@ -1,193 +1,195 @@
-'`timescale 1ns / 1ps
+Writeback Final
+
+`timescale 1ns/1ps
 
 import rv32_pkg::*;
 
-module wb_stage (
-
+module wb_stage(
+    
     // Clock and Reset
     input logic clk_i,
     input logic rst_ni,
 
-    // Designation Register
+    // Pipeline Control
+    output logic wb_flush_o,
+    output logic [DATA_WIDTH-1:0] wb_flush_pc_o,
+    output logic wb_stall_o
+
+    // MEM/WB Pipeline Inputs
     input logic [RF_ADDR_WIDTH-1:0] rd_addr_i,
-    input logic [DATA_W-1:0] rd_data_i,
-    input logic rd_valid_i,
-    input logic rd_exception_i,
-    input logic zero_div_exception_i,
+    input logic [DATA_WIDTH-1:0] rd_data_i,
+    input logic reg_we_i,
+
+    // Exception Inputs
+    input logic ex_valid_i, // exception pending from MEM
+    input logic [3:0] ex_cause_i, // exception cause code (mcause)
+    input logic [DATA_WIDTH-1:0] ex_trap_i, // trap value (faulting addr/instr)
+    input logic [DATA_WIDTH-1:0] ex_pc_i, // PC of excepting instruction
+
+    // Interrupt Inputs
+    input logic irq_valid_i,
+    input logic [3:0] irq_cause_i,
 
     // Outputs to Register File
     output logic rd_we_o,
     output logic [RF_ADDR_WIDTH-1:0] rd_waddr_o,
-    output logic [DATA_W-1:0] rd_wdata_o,
-    output logic divide_flag_o,
+    output logic [DATA_WIDTH-1:0] rd_wdata_o,
 
     // CSR Interface
+    input logic csr_we_i, // CSR write request from instruction
+    input logic [11:0] csr_addr_i, // CSR address from instruction
+    input logic [DATA_WIDTH-1:0] csr_wdata_i, // CSR write data from instruction
     output logic csr_we_o,
     output logic [11:0] csr_addr_o,
-    output logic [DATA_W-1:0] csr_wdata_o,
-    output logic [DATA_W-1:0] csr_rdata_o,
+    output logic [DATA_WIDTH-1:0] csr_wdata_o,
 
-    // Registers and Signals
-    logic [DATA_W-1:0] wb_data_reg;
-    logic [DATA_W-1:0] wb_exception_reg;
-    logic wb_addr_reg;
-    logic wb_valid_reg;
-    logic wb_exception_pending_reg;
+    // Trap Interface 
+    output logic trap_valid_o,
+    output logic [DATA_WIDTH-1:0] trap_cause_o,
+    output logic [DATA_WIDTH-1:0] trap_tval_o,
+    output logic [DATA_WIDTH-1:0] trap_epc_o,
+    input logic [DATA_WIDTH-1:0] trap_vec_i, // Mtvec from CSR file
+
 );
-
-    // Unique Case FSM
+    // Unique-Case FSM
     typedef enum logic [1:0] {
-        WB_IDLE,
-        WB_COMMIT,
-        WB_EXCEPTION,
-        WB_CSR_ACCESS
+        WB_IDLE = 2'b00,
+        WB_COMMIT = 2'b01,
+        WB_EXCEPTION = 2'b10
     } wb_state_e;
-
     wb_state_e current_state, next_state;
+
+    // Internal Signals
+    logic [RF_ADDR_WIDTH-1:0] saved_rd_addr;
+    logic [DATA_WIDTH-1:0] saved_rd_data;
+    logic saved_rd_we;
+    logic saved_ex_valid;
+    logic [3:0] saved_ex_cause;
+    logic [DATA_WIDTH-1:0] saved_ex_tval;
+    logic [DATA_WIDTH-1:0] saved_ex_pc;
+    logic saved_irq_valid;
+    logic [3:0] saved_irq_cause;
+    logic saved_csr_we;
+    logic [11:0] saved_csr_addr;
+    logic [DATA_WIDTH-1:0] saved_csr_wdata;
+    // Check if we have a trap to commit (either exception or interrupt)
+    logic commit_trap;
+    assign commit_trap = saved_exc_valid || saved_irq_valid;
 
     //
     // Reset/Initialization
     //
 
-    always_ff @(posedge clk_i or negedge rst_ni) begin // On reset, initialize all registers and signals
+    always_ff @(posedge clk_i or negedge rst_ni) begin
         if (!rst_ni) begin
             current_state <= WB_IDLE;
-            wb_data_reg <= '0;
-            wb_exception_reg <= '0;
-            wb_addr_reg <= '0;
-            wb_valid_reg <= 1'b0;
-            wb_exception_pending_reg <= 1'b0;
-
-            rd_we_o <= 1'b0; // All control signals
-            csr_we_o <= 1'b0;
-            trap_o <= 1'b0;
-            pipeline_flush_o <= 1'b0;
-            wb_stall_o <= 1'b0;
+            saved_rd_addr <= '0;
+            saved_rd_data <= '0;
+            saved_rd_we <= 1'b0;
+            saved_exc_valid <= 1'b0;
+            saved_exc_cause <= 4'b0;
+            saved_exc_tval <= '0;
+            saved_exc_pc <= '0;
+            saved_irq_valid <= 1'b0;
+            saved_irq_cause <= 4'b0;
+            saved_csr_we <= 1'b0;
+            saved_csr_addr <= 12'b0;
+            saved_csr_wdata <= '0;
         end else begin
             current_state <= next_state;
-
-            if (rd_valid_i) begin // Update registers only if we have a valid writeback from the memory stage
-                wb_data_reg <= rd_data_i;
-                wb_addr_reg <= rd_addr_i;
-                wb_valid_reg <= rd_valid_i;
-                wb_exception_pending_reg <= rd_exception_i;
-            end
-
-            if (rd_exception_i) begin // If an exception is signaled, store the exception code
-                wb_exception_pending_reg <= 1'b1;   
-                wb_exception_reg <= rd_data_i;
-            end
-
-            if (wb_state_e == WB_COMMIT) begin  // Clears Flags after commit
-                 wb_exception_pending_reg <= 1'b0;
-                wb_exception_pending_reg <= 1'b0;
+            if (current_state == WB_IDLE) begin // Latch inputs when in IDLE so they're stable during COMMIT/EXCEPTION
+                saved_rd_addr <= rd_addr_i;
+                saved_rd_data <= rd_data_i;
+                saved_rd_we <= rd_we_i;
+                saved_exc_valid <= exc_valid_i;
+                saved_exc_cause <= exc_cause_i;
+                saved_exc_tval <= exc_tval_i;
+                saved_exc_pc <= exc_pc_i;
+                saved_irq_valid <= irq_valid_i;
+                saved_irq_cause <= irq_cause_i;
+                saved_csr_we <= csr_we_i;
+                saved_csr_addr <= csr_addr_i;
+                saved_csr_wdata <= csr_wdata_i;
             end
         end
     end
 
     //
-    // Next State Logic
+    // Next-State Logic
     //
 
     always_comb begin
         next_state = current_state;
-        case(current_state)
-            WB_IDLE: begin 
-                if (wb_exception_pending_reg) begin // If an exception is pending, commmit to execption state
-                    next_state = WB_EXCEPTION; 
-                end else if (wb_valid_reg && rd_we_i) begin // If valid writeback register, commit to register state
-                    next_state = WB_COMMIT; 
-                end
-
-                else if (csr_access_i) begin // If there's a CSR access request, go to CSR access state
-                    next_state = WB_CSR_ACCESS;
+        unique case (current_state)
+            WB_IDLE: begin
+                if (exc_valid_i || irq_valid_i) begin // Exceptions and interrupts take priority over normal commit
+                    next_state = WB_EXCEPTION;
+                end else if (rd_we_i || csr_we_i) begin
+                    next_state = WB_COMMIT;
                 end
             end
-
-            WB_COMMIT: begin // After committing, return to idle
+            WB_COMMIT: begin  // 1-cycle commit, return to idle immediately
                 next_state = WB_IDLE;
             end
-
-            WB_EXCEPTION: begin // Remain in this state until cleared, then return to idle
-                if (!wb_exception_pending_reg) begin
-                    next_state = WB_IDLE;
-                end
+            WB_EXCEPTION: begin  // 1-cycle exception commit, return to idle immediately
+                next_state = WB_IDLE;
             end
-
-            WB_CSR_ACCESS: begin // Stay in CSR access state until completion, then return to idle
-                if (!csr_access_i) begin
-                    next_state = WB_IDLE;
-                end
-            end
+            default: next_state = WB_IDLE;
         endcase
     end
 
-    
-    // 
-    // Register File and CSR Writeback
+    //
+    // Register File, CSR, Trap, and Pipeline Control
     //
 
-    always_comb begin // Default outputs
-        rd_we_o = 1'b0;  
-        rd_waddr_o = '0; 
+    always_comb begin  // Defaults
+        rd_we_o = 1'b0;
+        rd_waddr_o = '0;
         rd_wdata_o = '0;
-
-
-        if(current_state == WB_COMMIT && wb_valid_reg) begin // Commits to register file only if valid
-            rd_we_o = 1'b1;
-            if(wb_addr_reg == 5'b00000) begin
-                rd_we_o = 1'b0; // x0 is hardwired to 0
-            end
-        end
-
-        // Check with Adrian about division by zero flag
-        always_ff @(posedge clk_i) begin
-            if (zero_div_exception_i) begin
-                divide_flag_o <= 1'b1; // Set divide flag on division by zero exception
-            end else begin
-                divide_flag_o <= 1'b0; // Clear it otherwise
-            end
-        end
-    end
-
-    //
-    // Exception Commit Behavior
-    //
-
-    always_ff @(posedge clk_i) begin
-        if (current_state == WB_EXCEPTION) begin // If in exception state, commit exception to CSR and flush the pipeline
-            csr_we_o <= 1'b1; 
-            csr_addr_o <= CSR_MCAUSE; 
-            csr_wdata_o <= wb_exception_reg; 
-        end else if (current_state == WB_COMMIT && wb_exception_pending_reg) begin // If committing an instruction but exception pending, commit exception
-            csr_we_o <= 1'b1; 
-            csr_addr_o <= CSR_MCAUSE; 
-            csr_wdata_o <= wb_exception_reg; 
-        end else begin
-            csr_we_o <= 1'b0; // Default to no CSR write
-        end
-    end
-
-    //
-    // Trap Detection and Pipeline Control
-    //
-
-    always_comb begin
-        trap_o = 1'b0;
-        pipeline_flush_o = 1'b0;
+        csr_we_o = 1'b0;
+        csr_addr_o = 12'b0;
+        csr_wdata_o = '0;
+        trap_valid_o = 1'b0;
+        trap_cause_o = '0;
+        trap_tval_o = '0;
+        trap_epc_o = '0;
+        wb_flush_o = 1'b0;
+        wb_flush_pc_o = '0;
         wb_stall_o = 1'b0;
-
-        if (current_state == WB_EXCEPTION) begin // If we're in the exception state, signal a trap and flush the pipeline
-            trap_o = 1'b1; 
-            pipeline_flush_o = 1'b1; 
-            // Change to one If Statement
-        end else if (current_state == WB_COMMIT && wb_exception_pending_reg) begin // If exception pending, signal a trap and flush on commit
-            trap_o = 1'b1; 
-            pipeline_flush_o = 1'b1; 
-        end else if (current_state == WB_CSR_ACCESS) begin // If accessing CSR, stall until complete
-            wb_stall_o = 1'b1; 
-        end
+        unique case (current_state)
+            WB_IDLE: begin  // Stall for one cycle while we latch and decide
+                if (exc_valid_i || irq_valid_i || rd_we_i || csr_we_i) begin
+                    wb_stall_o = 1'b1;
+                end
+            end
+            WB_COMMIT: begin // Write to register file (suppress x0 writes)
+                if (saved_rd_we && (saved_rd_addr != '0)) begin
+                    rd_we_o = 1'b1;
+                    rd_waddr_o = saved_rd_addr;
+                    rd_wdata_o = saved_rd_data;
+                end
+                if (saved_csr_we) begin // Write to CSR if this was a CSR instruction
+                    csr_we_o = 1'b1;
+                    csr_addr_o = saved_csr_addr;
+                    csr_wdata_o = saved_csr_wdata;
+                end
+            end
+            WB_EXCEPTION: begin // Exceptions suppress register writeback
+                trap_valid_o = 1'b1; // Interrupts take priority when both are pending
+                if (saved_irq_valid) begin
+                    trap_cause_o = {1'b1, {(DATA_WIDTH-5){1'b0}}, saved_irq_cause};
+                    trap_tval_o = '0;
+                    trap_epc_o = saved_exc_pc;
+                end else begin
+                    trap_cause_o = {{(DATA_WIDTH-4){1'b0}}, saved_exc_cause};
+                    trap_tval_o = saved_exc_tval;
+                    trap_epc_o = saved_exc_pc;
+                end
+                wb_flush_o = 1'b1; // Flush pipeline and redirect to trap vector
+                wb_flush_pc_o = trap_vec_i;
+            end
+            default: begin // Should never hit this state, but if we do, just do nothing
+            end
+        endcase
     end
-)
-endmodule : wb_stage
-
+endmodule
