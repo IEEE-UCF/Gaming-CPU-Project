@@ -1,0 +1,157 @@
+package rv32_pkg;
+
+  parameter int unsigned HAS_M = 1; // Enable Multiply/Divide (RV32M) instructions
+  parameter int unsigned HAS_A = 1; // Enable Atomic (RV32A) instructions
+
+  parameter int unsigned RESET_ADDR = 32'h0000_0000; //  PC value on reset (BootROM start address)
+  parameter int unsigned BTB_ENTRIES = 16; // Branch Target Buffer (BTB) size (0 to disable)
+  
+  parameter int unsigned DATA_WIDTH = 32; // Data bus / operand width
+  parameter int unsigned ADDR_WIDTH = 32; // Address bus width
+
+  parameter int unsigned MUL_CYCLES = 3; // Multiply latency in cycles
+  parameter int unsigned DIV_CYCLES = 5; // Divide latency in cycles
+
+  parameter int unsigned RF_ADDR_WIDTH = 5; // Register File address width
+  parameter int unsigned RF_COUNT = 32; // Number of registers in the Register File
+
+
+  // For future use: instruction encodings
+  /*
+  // RV32I Base Integer Instruction Set Funct3 Codes for ALU Register-Register Instructions
+  localparam logic [2:0]
+    FUNCT3_ADD   = 3'b000,
+    FUNCT3_SUB   = 3'b000,
+    FUNCT3_SLL   = 3'b001,
+    FUNCT3_SLT   = 3'b010,
+    FUNCT3_SLTU  = 3'b011,
+    FUNCT3_XOR   = 3'b100,
+    FUNCT3_SRL   = 3'b101,
+    FUNCT3_OR    = 3'b110,
+    FUNCT3_AND   = 3'b111;
+
+  // RV32I Base Integer Instruction Set Funct3 Codes for ALU Immediate Instructions
+  localparam logic [2:0]
+    FUNCT3_ADDI  = 3'b000,
+    FUNCT3_SLTI  = 3'b010,
+    FUNCT3_SLTIU = 3'b011,
+    FUNCT3_XORI  = 3'b100,
+    FUNCT3_ORI   = 3'b110,
+    FUNCT3_ANDI  = 3'b111,
+    FUNCT3_SLLI  = 3'b001,
+    FUNCT3_SRLI_SRAI = 3'b101;
+
+  // RV32I Base Integer Instruction Set Funct7 Codes
+  localparam logic [6:0]
+    FUNCT7_ADD_SUB = 7'b0000000,
+    FUNCT7_SLL     = 7'b0000000,
+    FUNCT7_SLT     = 7'b0000000,
+    FUNCT7_SLTU    = 7'b0000000,
+    FUNCT7_XOR     = 7'b0000000,
+    FUNCT7_SRL     = 7'b0000000,
+    FUNCT7_OR      = 7'b0000000,
+    FUNCT7_AND     = 7'b0000000,
+    FUNCT7_SUB     = 7'b0100000,
+    FUNCT7_SRA     = 7'b0100000;
+
+  // RV32I Base Integer Instruction Set Funct3 Codes
+  localparam logic [2:0]
+    FUNCT3_BEQ   = 3'b000,
+    FUNCT3_BNE   = 3'b001,
+    FUNCT3_BLT   = 3'b100,
+    FUNCT3_BGE   = 3'b101,
+    FUNCT3_BLTU  = 3'b110,
+    FUNCT3_BGEU  = 3'b111;
+
+  // RV32I Base Integer Instruction Set Opcodes
+  localparam logic [6:0]
+    OPCODE_LUI    = 7'b0110111,
+    OPCODE_AUIPC  = 7'b0010111,
+    OPCODE_JAL    = 7'b1101111,
+    OPCODE_JALR   = 7'b1100111,
+    OPCODE_BRANCH = 7'b1100011,
+    OPCODE_LOAD   = 7'b0000011,
+    OPCODE_STORE  = 7'b0100011,
+    OPCODE_ALUI   = 7'b0010011,
+    OPCODE_ALUR   = 7'b0110011,
+    OPCODE_FENCE  = 7'b0001111,
+    OPCODE_SYSTEM = 7'b1110011;
+*/
+
+  // Decode: Control Signals
+  typedef struct packed { 
+    logic alu_src; // ALU source select (0 = rs2, 1 = imm)
+    logic [4:0] alu_op; // ALU operation code 
+    logic mem_read; // Memory read enable (to load)
+    logic mem_write;  // Memory write enable (to store)
+    logic [1:0] mem_size; // Memory access size (00 = byte, 01 = halfword, 10 = word)
+    logic branch; // Branch instruction
+    logic jump; // Jump instruction
+    logic fence;  // Fence instruction
+    logic fence_i;  // Fence.I instruction
+    logic [3:0] pred; // Fence predecessor 
+    logic [3:0] succ; // Fence successor
+    logic ecall;  // ECALL instruction
+    logic ebreak; // EBREAK instruction
+    logic csr;  // CSR instruction
+    logic auipc; // AUIPC instruction (use PC as operand A)
+    logic reg_ex_we;  // Register file write enable for EX stage result
+    logic reg_mm_we;  // Register file write enbale for MM stage result
+  } rv32_ctrl_s;
+
+  // Decode: Functional Unit Selection
+  typedef enum logic [2:0] {
+    FU_ALU = 3'd0,  // Arithmetic Logic Unit
+    FU_SHIFT = 3'd1,  // Shifter Unit
+    FU_LSU = 3'd2,  // Load Store Unit
+    FU_BRANCH = 3'd3, // Branch Unit
+    FU_MUL = 3'd4,  // Multiplier Unit
+    FU_DIV = 3'd5,  // Divider Unit
+    FU_CSR = 3'd6 // CSR Unit
+  } fu_selec_e;
+  
+  // Decode: Atomic Memory Operation (AMO) Codes
+  typedef enum logic [3:0] {
+    AMO_LR = 4'd0, // Load-Reserved
+    AMO_SC = 4'd1,  // Store-Conditional
+    AMO_SWAP = 4'd2,
+    AMO_ADD = 4'd3,
+    AMO_XOR = 4'd4,
+    AMO_AND = 4'd5,
+    AMO_OR = 4'd6,
+    AMO_MIN = 4'd7,
+    AMO_MAX = 4'd8,
+    AMO_MINU = 4'd9,
+    AMO_MAXU = 4'd10,
+    AMO_NONE = 4'd11 // No AMO
+  } amo_op_e;
+
+  // Decode: ALU Operation Codes
+  localparam logic [4:0]
+    ALU_BEQ = 5'b00001, // BEQ
+    ALU_BNE = 5'b00010, // BNE
+    ALU_BLT = 5'b00011, // BLT
+    ALU_BGE = 5'b00100, // BGE
+    ALU_BLTU = 5'b00101, // BLTU
+    ALU_BGEU = 5'b00110, // BGEU
+    ALU_ADD = 5'b00111, // ADD, ADDI
+    ALU_SLT = 5'b01000, // SLT, SLTI
+    ALU_SLTU = 5'b01001, // SLTU, SLTIU
+    ALU_XOR = 5'b01010, // XOR, XORI
+    ALU_OR = 5'b01011, // OR, ORI
+    ALU_AND = 5'b01100, // AND, ANDI
+    ALU_SLL = 5'b01101, // SLL, SLLI
+    ALU_SRL = 5'b01110, // SRL, SRLI
+    ALU_SRA = 5'b01111, // SRA, SRAI
+    ALU_SUB = 5'b10000, // SUB
+    ALU_MUL = 5'b10001, // MUL
+    ALU_MULH = 5'b10010, // MULH
+    ALU_MULHSU = 5'b10011, // MULHSU
+    ALU_MULHU = 5'b10100, // MULHU
+    ALU_DIV = 5'b10101, // DIV
+    ALU_DIVU = 5'b10110, // DIVU
+    ALU_REM = 5'b10111, // REM
+    ALU_REMU = 5'b11000, // REMU
+    ALU_PASS = 5'b11111; // Pass-through (LUI)
+
+endpackage : rv32_pkg

@@ -1,5 +1,3 @@
-`timescale 1ns / 1ps
-
 import rv32_pkg::*;
 
 typedef enum {

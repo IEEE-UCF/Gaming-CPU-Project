@@ -23,19 +23,18 @@
 - AXI burst parameters must be defined later
 - Subject to change
 
-| Signal Name              | Direction | Width | Description                                                            |
-| ------------------------ | --------- | ----- | ---------------------------------------------------------------------- |
-| **Global Signals**       |           |       |                                                                        |
-| clk_i                    | In        | 1     | Main clock input                                                       |
-| rst_ni                   | In        | 1     | Active-low asynchronous reset                                          |
-|                          |           |       |                                                                        |
-| **Semi-Global Signals**  |           |       |                                                                        |
-| pc_q                     | In        | 32    | Program counter signal                                                 |
-| ic_req_o                 | Out       | N/A   | Instruction cache request + valid                                      |
-| ic_rsp_i                 | In        | N/A   | Instruction cache response + valid                                     |
-| redir_i                  | In        | 1     | Indicator to redirect PC to branch/jump address                        |
-| inst_o                   | Out       | 32    | Fetched instruction to decode (ID) stage                               |
-|                          |           |       |                                                                        |
+| Signal Name        | Direction | Width | Description                                     |
+| ------------------ | --------- | ----- | ----------------------------------------------- |
+| clk_i              | In        | 1     | Main clock input                                |
+| rst_ni             | In        | 1     | Active-low asynchronous reset                   |
+| pc_q               | In        | 32    | Program counter signal                          |
+| ic_req_valid_o     | Out       | 1     | Instruction cache request valid                 |
+| ic_req_addr_o      | Out       | 32    | Instruction cache request address               |
+| ic_rsp_valid_i     | In        | 1     | Instruction cache response valid                |
+| ic_rsp_data_i      | In        | 32    | Instruction cache response data                 |
+| redir_i            | In        | 1     | Indicator to redirect PC to branch/jump address |
+| inst_o             | Out       | 32    | Fetched instruction to decode (ID) stage        |
+|                    |           |       |                                                 |
 
 ---
 #### **Reset/Init**
