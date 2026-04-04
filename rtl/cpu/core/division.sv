@@ -20,7 +20,6 @@ module division (
     input logic [31:0] dividend,  // numerator
     input logic [31:0] divisor,  // denominator
     output logic [31:0] remainder,  // Mod 
-    output logic Division_DONE,  // done flag
     output logic [31:0] quotient,  // result
     output logic stall_o  // outputting to stall the pipeline when high
 );
@@ -30,7 +29,7 @@ module division (
   logic signed [64:0] remainder_reg;
   logic [31:0] quotient_reg;
   logic [5:0] counter;
-  logic Division_DONE_reg;
+
 
   state_t current_state, next_state;  // Division FSM states 0 or 1
 
@@ -52,7 +51,7 @@ module division (
       IDLE:
       next_state = (Division_START) ? STALL : IDLE; // When Division_start gets asserted by mux, go to STALL
       STALL:
-      next_state = (Division_DONE_reg) ? IDLE : STALL; // When Division circuit is done on last clk edge, it will assert Division_DONE 1 to indicate DONE STATE
+      next_state = (counter == 6'd32) ? IDLE : STALL; // When Division circuit is done on last clk edge, it will assert Division_DONE 1 to indicate DONE STATE
       default: next_state = current_state;
     endcase
 
@@ -106,9 +105,7 @@ module division (
       divisor_reg <= 64'd0;
       remainder_reg <= 64'd0;
       quotient_reg <= 32'd0;
-      Division_DONE_reg <= 1'b0;
       counter <= 6'd0;
-
 
     end else begin
 
@@ -123,7 +120,6 @@ module division (
           remainder_reg <= {
             32'd0, dividend
           };  // remainder_reg will be initialized with numerator            
-          Division_DONE_reg <= 1'b0;
           counter <= 6'd0;
           quotient_reg <= 32'd0;
 
@@ -133,17 +129,6 @@ module division (
           quotient_reg <= quotient_comb;
           divisor_reg <= divisor_comb;
           counter <= counter + 1'b1;
-
-          if (counter == 6'd32) begin
-            Division_DONE_reg <= 1'b1;
-
-
-          end else begin
-
-            Division_DONE_reg <= 1'b0;
-
-          end
-
 
         end
 
@@ -157,42 +142,37 @@ module division (
 
   assert property (@(posedge clk_i)
             disable iff(rst_ni == 0)
-                 counter == 6'd32 |=> Division_DONE_reg == 1'b1 // Check that after cycle 32, the division done flag was raised
+                 counter == 6'd32 |=> current_state == IDLE // Check that after cycle 32, the division done flag was raised
   )
-  else
-    $error(
-        "Division Done flag was not raised at the correct time. Counter: %0d, Division_DONE_reg: %b",
-        counter,
-        Division_DONE_reg
-    );
+  else $error("Counter Never went to IDLE when Division Finished. State: %s", current_state);
 
 
+  // Assertions to check correctness of quotient and remainder when division is done
+  //always_ff @(posedge clk_i) begin
 
-  always_ff @(posedge clk_i) begin
-
-    if (counter == 6'd33) begin
-      $display("Division Operation Completed");
-      $display("Quotient: %0d", quotient);
-      $display("Remainder: %0d", remainder);
-      $display("Counter: %0d", counter);
-      $display("Done Signal: %0d", Division_DONE);
-      $display("Current State: %s", current_state);
-      $display("next State: %s", next_state);
-      $display("Division Start flag: %d", Division_START);
-      $display("\n");
-    end
+  //if (counter == 6'd33) begin
+  // $display("Division Operation Completed");
+  //$display("Quotient: %0d", quotient);
+  //$display("Remainder: %0d", remainder);
+  //$display("Counter: %0d", counter);
+  //$display("Done Signal: %0d", Division_DONE);
+  //$display("Current State: %s", current_state);
+  //$display("next State: %s", next_state);
+  //$display("Division Start flag: %d", Division_START);
+  //$display("\n");
+  //end
 
 
 
 
 
 
-  end
+  //end
 
-  assign stall_o = current_state;  // used for stalling the pipeline
+  assign stall_o = (current_state == STALL);  // Stall output is high when in STALL state, low otherwise
   assign remainder = remainder_reg;
   assign quotient = quotient_reg;
-  assign Division_DONE = Division_DONE_reg;
+
 
 
 
