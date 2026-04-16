@@ -1,6 +1,7 @@
 import rv32_pkg::*;
 
 // Decode Module
+// EDAplayground testbench: https://edaplayground.com/x/u26L
 module decode (
 
   // Clock 
