@@ -355,7 +355,7 @@ module decode (
                 5'b00000: begin amo_op_n = AMO_ADD; end // AMOADD.W
                 5'b00100: begin amo_op_n = AMO_XOR; end // AMOXOR.W
                 5'b01100: begin amo_op_n = AMO_AND; end // AMOAND.W
-                5'b01010: begin amo_op_n = AMO_OR; end  // AMOOR.W 
+                5'b01000: begin amo_op_n = AMO_OR; end  // AMOOR.W 
                 5'b10000: begin amo_op_n = AMO_MIN; end // AMOMIN.W
                 5'b10100: begin amo_op_n = AMO_MAX; end // AMOMAX.W
                 5'b11000: begin amo_op_n = AMO_MINU; end // AMOMINU.W
